@@ -1,6 +1,10 @@
+import json
 from abc import abstractmethod, ABC
 from enum import IntFlag
 from typing import NamedTuple, Dict, Optional
+
+__all__ = ('SlamStatus', 'Coords', 'Wifi', 'Skill', 'Image', 'Audio',
+           'ArmSettings', 'HeadSettings', 'json_obj', 'RestAPI')
 
 
 class SlamStatus(IntFlag):
@@ -116,6 +120,10 @@ class json_obj(dict):
 
     def __delattr__(self, key):
         del self[key]
+
+    @property
+    def json_str(self) -> str:
+        return json.dumps(self)
 
 
 class RestAPI(ABC):

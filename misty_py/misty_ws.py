@@ -2,9 +2,11 @@ import asyncio
 from collections import defaultdict
 from enum import Enum
 from itertools import count
-from typing import Callable, Awaitable, Dict
+from typing import Callable, Awaitable, Dict, NamedTuple, Set
 
 import websockets
+
+from utils import json_obj
 
 __author__ = 'acushner'
 
@@ -45,34 +47,42 @@ class Sub(Enum):
     audio_play_complete = 'AudioPlayComplete'
 
 
-# class _Subscriptions:
-#     def __init__(self):
-#         self._event_name_to_sub = {}
-#         self._sub_to_event_names = defaultdict(set)
-#         self._event_name_to_handlers = defaultdict(lambda: defaultdict(int))
-#
-#     def add_sub(self, sub: Sub, event_name: str, handler: Callable[[Dict], None]):
-#         self._event_name_to_sub[event_name] = sub
-#         self._event_name_to_handlers[event_name].add(handler)
-#         self._sub_to_event_names[sub].add(event_name)
-#
-#     def rm_sub(self, event_name, handler):
-#         """return True if should unsubscribe"""
-#         sub = self._event_name_to_sub[event_name]
-#         del self._event_name_to_sub[event_name]
-#
-#         self._sub_to_event_names[sub].remove(event_name)
-#
-#         handlers = self._event_name_to_handlers[event_name]
-#         handlers[handler] -= 1
-#         return not handlers
+class SubscriptionInfo(NamedTuple):
+    id: int
+    type: Sub
+    handler: Callable
+
+    @property
+    def event_name(self) -> str:
+        return f'{self.type.value}_{self.id:04}'
 
 
 class _Subscriptions:
-    """assume one handler per sub"""
+    _count = count(1)
+
+    def __init__(self):
+        self._event_name_to_si: Dict[str, SubscriptionInfo] = {}
+        self._type_to_sis: Dict[Sub, Set[SubscriptionInfo]] = defaultdict(set)
+
+    def subscribe(self, sub: Sub, handler: Callable[[Dict], None]):
+        si = SubscriptionInfo(self._next_sub_id(), sub, handler)
+        self._event_name_to_si[si.event_name] = si
+        self._type_to_sis[si.type].add(si)
+        return si
+
+    def unsubscribe(self, sub_info: SubscriptionInfo):
+        """return True if should unsubscribe"""
+        del self._event_name_to_si[sub_info.event_name]
+        event_type_subs = self._type_to_sis[sub_info.type]
+        event_type_subs.remove(sub_info)
+        return not event_type_subs
+
+    def _next_sub_id(self) -> int:
+        return next(self._count)
+
 
 class MistyWS:
-    _count = count()
+
     def __init__(self, ip):
         self.ip = ip
         self._subscriptions = _Subscriptions()
@@ -81,23 +91,20 @@ class MistyWS:
     def _endpoint(self):
         return f'http://{self.ip}/pubsub'
 
-    def subscribe(self, sub: Sub, handler: Callable[[Dict], None], debounce_ms: int = 250):
-        asyncio.run(self.a_subscribe(sub, handler, debounce_ms))
-
-    async def a_subscribe(self, sub: Sub, handler: Callable[[Dict], None], debounce_ms: int = 250):
-        event_name = str(next(self._count))
-        payload = dict(Operation='subscribe', Type=sub.value, DebounceMS=debounce_ms, EventName=event_name)
-        self._subscriptions.add_sub(sub, event_name, handler)
+    async def a_subscribe(self, sub: Sub, handler: Callable[[Dict], None], debounce_ms: int = 250) -> SubscriptionInfo:
+        sub_info = self._subscriptions.subscribe(sub, handler)
+        payload = json_obj(Operation='subscribe', Type=sub.value, DebounceMS=debounce_ms, EventName=sub_info.event_name)
         async with websockets.connect(self._endpoint) as ws:
-            await ws.send(payload)
-        return event_name
+            await ws.send(payload.json_str)
+        return sub_info
 
+    async def unsubscribe(self, sub_info: SubscriptionInfo):
+        if self._subscriptions.unsubscribe(sub_info):
+            payload = json_obj(Operation='unsubscribe', EventName=sub_info.event_name, Message='')
+            async with websockets.connect(self._endpoint) as ws:
+                await ws.send(payload.json_str)
 
-    def unsubscribe(self, event_name: str, handler):
-        self._subscriptions.rm_sub(event_name, handler)
-        handlers = self._subscriptions[event_name]
-        handlers.remove()
-
-    async def handle(self, msg):
+    async def handle(self):
         async with websockets.connect(self._endpoint) as ws:
             async for msg in ws:
+                print(msg)

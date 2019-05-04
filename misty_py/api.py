@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from typing import List, Any, Type, TypeVar
+import asyncio
+from concurrent.futures.thread import ThreadPoolExecutor
+from functools import partial
+from typing import Dict, List, Any, Type, TypeVar, Optional
 
 import requests
 
-from .color import RGB
-from .datastructures import *
+from utils import *
 
 # TODO:
 # x Asset
@@ -30,17 +32,17 @@ class SubAPI(RestAPI):
     def __init__(self, api: MistyAPI):
         self._api = api
 
-    def _get(self, endpoint, **params):
-        return self._api._get(endpoint, **params)
+    async def _get(self, endpoint, **params):
+        return await self._api._get(endpoint, **params)
 
-    def _get_j(self, endpoint, **params) -> Dict:
-        return self._api._get_j(endpoint, **params)
+    async def _get_j(self, endpoint, **params) -> Dict:
+        return await self._api._get_j(endpoint, **params)
 
-    def _post(self, endpoint, json: Optional[dict] = None, **params):
-        return self._api._post(endpoint, json, **params)
+    async def _post(self, endpoint, json: Optional[dict] = None, **params):
+        return await self._api._post(endpoint, json, **params)
 
-    def _delete(self, endpoint, json: Optional[dict] = None, **params):
-        return self._api._delete(endpoint, json, **params)
+    async def _delete(self, endpoint, json: Optional[dict] = None, **params):
+        return await self._api._delete(endpoint, json, **params)
 
 
 T = TypeVar('T', bound=SubAPI)
@@ -57,13 +59,13 @@ class APIDescriptor:
 
     def __set_name__(self, cls, name):
         self.name = name
-        self.api_type = cls.__annotations__[name]
+        self.api_type = eval(cls.__annotations__[name])
 
     def __get__(self, instance: T, cls: Type[T]) -> T:
         if not instance:
             return self
 
-        res = self.__dict__[self.name] = self.api_type(instance._api)
+        res = instance.__dict__[self.name] = self.api_type(instance)
         return res
 
 
@@ -76,16 +78,16 @@ class ImageAPI(SubAPI):
         super().__init__(api)
         self.images = self.list()
 
-    def get(self, file_name: str, as_base64: bool = True) -> Image:
+    async def get(self, file_name: str, as_base64: bool = True) -> Image:
         # TODO:  test with as_base64 set to both True and False
-        return Image.from_misty(self._get_j('images', FileName=file_name, Base64=as_base64))
+        return Image.from_misty(await self._get_j('images', FileName=file_name, Base64=as_base64))
 
-    def list(self) -> Dict[str, Image]:
-        images = (Image.from_misty(i) for i in self._get_j('images/list'))
+    async def list(self) -> Dict[str, Image]:
+        images = (Image.from_misty(i) for i in await self._get_j('images/list'))
         return {i.name: i for i in images}
 
-    def upload(self, file_name: str, as_byte_array: bool = False, width: Optional[int] = None,
-               height: Optional[int] = None, apply_immediately: bool = False, overwrite: bool = True):
+    async def upload(self, file_name: str, as_byte_array: bool = False, width: Optional[int] = None,
+                     height: Optional[int] = None, apply_immediately: bool = False, overwrite: bool = True):
         if as_byte_array:
             raise ValueError('uploading `as_byte_array` is not currently supported')
 
@@ -95,18 +97,18 @@ class ImageAPI(SubAPI):
         if height:
             payload['Height'] = height
 
-        self._post('images', payload)
+        await self._post('images', payload)
 
-    def display(self, file_name: str, time_out_secs: float, alpha: float):
+    async def display(self, file_name: str, time_out_secs: float, alpha: float):
         # TODO: validate image exists - upload if not?
-        self._post('images/display', dict(FileName=file_name, TimeOutSeconds=time_out_secs, Alpha=alpha))
+        await self._post('images/display', dict(FileName=file_name, TimeOutSeconds=time_out_secs, Alpha=alpha))
 
-    def set_led(self, rgb: RGB):
+    async def set_led(self, rgb: RGB):
         rgb.validate()
-        self._post('led', rgb.json)
+        await self._post('led', rgb.json)
 
-    def delete(self, file_name: str):
-        self._delete('images', dict(FileName=file_name))
+    async def delete(self, file_name: str):
+        await self._delete('images', dict(FileName=file_name))
 
     @staticmethod
     def _validate_take_picture(file_name, width, height, show_on_screen):
@@ -116,29 +118,30 @@ class ImageAPI(SubAPI):
         if show_on_screen and not file_name:
             raise ValueError('in order for `show_on_screen` to work, you must provide a file_name')
 
-    def take_picture(self, file_name: Optional[str] = None, width: Optional[int] = None, height: Optional[int] = None,
-                     *, get_result: bool = True, show_on_screen: Optional[bool] = False,
-                     overwrite_existing=True):
+    async def take_picture(self, file_name: Optional[str] = None, width: Optional[int] = None,
+                           height: Optional[int] = None,
+                           *, get_result: bool = True, show_on_screen: Optional[bool] = False,
+                           overwrite_existing=True):
         self._validate_take_picture(file_name, width, height, show_on_screen)
 
         payload = json_obj()
         payload.add_if_not_none(Base64=get_result, FileName=file_name, Width=width, Height=height,
                                 DisplayOnScreen=show_on_screen, OverwriteExisting=overwrite_existing)
-        return self._get_j('cameras/rgb', **payload)
+        return await self._get_j('cameras/rgb', **payload)
 
-    def start_recording_video(self):
+    async def start_recording_video(self):
         """
         video is limited:
         - records up to 10 seconds
         - can only store one recording at a time
         """
-        self._post('video/record/start')
+        await self._post('video/record/start')
 
-    def stop_recording_video(self):
-        self._post('video/record/stop')
+    async def stop_recording_video(self):
+        await self._post('video/record/stop')
 
-    def get_recorded_video(self):
-        return self._get_j('video')
+    async def get_recorded_video(self):
+        return await self._get_j('video')
 
 
 class AudioAPI(SubAPI):
@@ -146,33 +149,33 @@ class AudioAPI(SubAPI):
         super().__init__(api)
         self.audio = self.list()
 
-    def get(self, file_name: str) -> Any:
+    async def get(self, file_name: str) -> Any:
         # TODO: what the hell do we get back?
-        return self._get_j('audio', FileName=file_name)
+        return await self._get_j('audio', FileName=file_name)
 
-    def list(self) -> Dict[str, Audio]:
-        audio = (Audio.from_misty(a) for a in self._get_j('audio/list'))
+    async def list(self) -> Dict[str, Audio]:
+        audio = (Audio.from_misty(a) for a in await self._get_j('audio/list'))
         return {a.name: a for a in audio}
 
-    def upload(self, file_name: str, as_byte_array: bool = False, apply_immediately: bool = False,
-               overwrite: bool = True):
+    async def upload(self, file_name: str, as_byte_array: bool = False, apply_immediately: bool = False,
+                     overwrite: bool = True):
         if as_byte_array:
             raise ValueError('uploading `as_byte_array` is not currently supported')
 
         payload = dict(FileName=file_name, ImmediatelyApply=apply_immediately, OverwriteExisting=overwrite)
-        self._post('audio', payload)
+        await self._post('audio', payload)
 
-    def play(self, file_name_or_id: str, volume: int = 100, as_file_name: bool = True):
+    async def play(self, file_name_or_id: str, volume: int = 100, as_file_name: bool = True):
         volume = min(max(volume, 1), 100)
         payload = dict(Volume=volume)
         payload['FileName' if as_file_name else 'AssetId'] = file_name_or_id
-        self._post('audio/play', payload)
+        await self._post('audio/play', payload)
 
-    def delete(self, file_name: str):
-        self._delete('audio', dict(FileName=file_name))
+    async def delete(self, file_name: str):
+        await self._delete('audio', dict(FileName=file_name))
 
-    def set_default_volume(self, volume):
-        self._post('audio/volume', dict(Volume=min(max(volume, 0), 100)))
+    async def set_default_volume(self, volume):
+        await self._post('audio/volume', dict(Volume=min(max(volume, 0), 100)))
 
 
 class FaceAPI(SubAPI):
@@ -180,14 +183,14 @@ class FaceAPI(SubAPI):
         super().__init__(api)
         self.faces = self.list()
 
-    def cancel_training(self):
+    async def cancel_training(self):
         """shouldn't need to call unless you want to manually stop something in progress"""
-        self._get('faces/training/cancel')
+        await self._get('faces/training/cancel')
 
-    def list(self) -> List[str]:
-        return self._get_j('faces')
+    async def list(self) -> List[str]:
+        return await self._get_j('faces')
 
-    def delete(self, *, name: Optional[str] = None, delete_all: bool = False):
+    async def delete(self, *, name: Optional[str] = None, delete_all: bool = False):
         """rm faces from misty"""
         if (delete_all and name) or not (delete_all or name):
             raise ValueError('set exactly one of `name` or `delete_all`')
@@ -196,21 +199,21 @@ class FaceAPI(SubAPI):
         if name:
             kwargs['FaceId'] = name
 
-        self._delete('faces', **kwargs)
+        await self._delete('faces', **kwargs)
 
-    def start_detection(self):
+    async def start_detection(self):
         """
         start finding/detecting faces in misty's line of vision
 
         TODO: subscribe to FaceEvents to figure when done
         """
-        self._post('faces/detection/start')
+        await self._post('faces/detection/start')
 
-    def stop_detection(self):
+    async def stop_detection(self):
         """stop finding/detecting faces in misty's line of vision"""
-        self._post('faces/detection/stop')
+        await self._post('faces/detection/stop')
 
-    def start_training(self):
+    async def start_training(self):
         """
         start training a particular face
 
@@ -218,18 +221,18 @@ class FaceAPI(SubAPI):
         TODO: set up something to alert the user that this is happening
             - change LED colors, display some text
         """
-        self._post('faces/training/start')
+        await self._post('faces/training/start')
 
-    def stop_training(self):
+    async def stop_training(self):
         """stop training a particular face"""
-        self._post('faces/training/stop')
+        await self._post('faces/training/stop')
 
-    def start_recognition(self):
-        self._post('faces/recognition/start')
+    async def start_recognition(self):
+        await self._post('faces/recognition/start')
 
-    def stop_recognition(self):
+    async def stop_recognition(self):
         """stop attempting to recognize faces"""
-        self._post('faces/recognition/stop')
+        await self._post('faces/recognition/stop')
 
 
 class MovementAPI(SubAPI):
@@ -242,10 +245,10 @@ class MovementAPI(SubAPI):
         if fails:
             raise ValueError(f'invalid value for vel_pct: {fails}, must be in range [-100, 100]')
 
-    def drive(self, linear_vel_pct: int, angular_vel_pct: int):
-        return self.drive_time(linear_vel_pct, angular_vel_pct)
+    async def drive(self, linear_vel_pct: int, angular_vel_pct: int):
+        return await self.drive_time(linear_vel_pct, angular_vel_pct)
 
-    def drive_time(self, linear_vel_pct: int, angular_vel_pct: int, time_ms: Optional[int] = None):
+    async def drive_time(self, linear_vel_pct: int, angular_vel_pct: int, time_ms: Optional[int] = None):
         """
         angular_vel_pct: -100 is full speed clockwise, 100 is full speed counter-clockwise
         """
@@ -256,21 +259,21 @@ class MovementAPI(SubAPI):
             payload['TimeMS'] = time_ms
             endpoint += '/time'
 
-        self._post(endpoint, payload)
+        await self._post(endpoint, payload)
 
-    def drive_track(self, left_track_vel_pct: float = 0.0, right_track_vel_pct: float = 0.0):
+    async def drive_track(self, left_track_vel_pct: float = 0.0, right_track_vel_pct: float = 0.0):
         """control drive tracks individually"""
         self._validate_vel_pct(left_track_vel_pct=left_track_vel_pct, right_track_vel_pct=right_track_vel_pct)
-        self._post('drive/track', dict(LeftTrackSpeed=left_track_vel_pct, RightTrackSpeed=right_track_vel_pct))
+        await self._post('drive/track', dict(LeftTrackSpeed=left_track_vel_pct, RightTrackSpeed=right_track_vel_pct))
 
-    def move_arms(self, *arm_settings: ArmSettings):
+    async def move_arms(self, *arm_settings: ArmSettings):
         """pass either/both left and right arm settings"""
-        self._post('arms/set', {k: v for arm in arm_settings for k, v in arm.json.items()})
+        await self._post('arms/set', {k: v for arm in arm_settings for k, v in arm.json.items()})
 
-    def move_head(self, settings: HeadSettings):
-        self._post('head', settings.to_misty())
+    async def move_head(self, settings: HeadSettings):
+        await self._post('head', settings.json)
 
-    def stop(self, *, everything=False):
+    async def stop(self, *, everything=False):
         """
         stop motion
 
@@ -278,52 +281,52 @@ class MovementAPI(SubAPI):
         """
         if everything:
             return self.halt()
-        self._post('drive/stop')
+        await self._post('drive/stop')
 
-    def halt(self):
+    async def halt(self):
         """stop everything"""
-        self._post('robot/halt')
+        await self._post('robot/halt')
 
 
 class SystemAPI(SubAPI):
-    def clear_error_msg(self):
-        self._post('text/clear')
+    async def clear_error_msg(self):
+        await self._post('text/clear')
 
     @property
-    def networks(self) -> List[Wifi]:
-        return [Wifi.from_misty(o) for o in self._get_j('networks')]
+    async def networks(self) -> List[Wifi]:
+        return [Wifi.from_misty(o) for o in await self._get_j('networks')]
 
     @property
-    def battery(self):
-        return self._get_j('battery')
+    async def battery(self):
+        return await self._get_j('battery')
 
     @property
-    def device_info(self):
-        return self._get_j('device')
+    async def device_info(self):
+        return await self._get_j('device')
 
-    def help(self, command: Optional[str] = None):
+    async def help(self, command: Optional[str] = None):
         params = json_obj(command=command)
-        return self._get_j('help', **params)
+        return await self._get_j('help', **params)
 
-    def get_logs(self):
+    async def get_logs(self):
         # TODO: implement individual date functionality
-        return self._get_j('logs')
+        return await self._get_j('logs')
 
-    def perform_system_update(self):
-        self._post('system/update')
+    async def perform_system_update(self):
+        await self._post('system/update')
 
-    def set_wifi_network(self, name, password):
+    async def set_wifi_network(self, name, password):
         payload = dict(NetworkName=name, Password=password)
-        self._post('network', payload)
+        await self._post('network', payload)
 
-    def trigger_skill_event(self, skill_uid: str, event_name: str, json: Optional[Dict]):
+    async def trigger_skill_event(self, skill_uid: str, event_name: str, json: Optional[Dict]):
         """send an event to a currently running skill"""
         payload = json_obj(UniqueId=skill_uid, EventName=event_name, Payload=json)
-        self._post('skills/event', payload)
+        await self._post('skills/event', payload)
 
-    def send_to_backpack(self, msg: str):
+    async def send_to_backpack(self, msg: str):
         """not sure what kind of data/msg we can send - perhaps Base64 encode to send binary data?"""
-        self._post('serial', dict(Message=msg))
+        await self._post('serial', dict(Message=msg))
 
 
 class _SlamHelper(SubAPI):
@@ -332,21 +335,21 @@ class _SlamHelper(SubAPI):
         self._endpoint = endpoint
         self.num_current_slam_streams = 0
 
-    def start(self):
-        return self._post(f'slam/{self._endpoint}/start')
+    async def start(self):
+        return await self._post(f'slam/{self._endpoint}/start')
 
-    def stop(self):
-        return self._post(f'slam/{self._endpoint}/stop')
+    async def stop(self):
+        return await self._post(f'slam/{self._endpoint}/stop')
 
-    def __enter__(self):
-        if self.num_current_slam_streams == 0:
-            self.start()
+    async def __aenter__(self):
         self.num_current_slam_streams += 1
+        if self.num_current_slam_streams == 1:
+            await self.start()
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
         self.num_current_slam_streams -= 1
         if self.num_current_slam_streams == 0:
-            self.stop()
+            await self.stop()
 
 
 class NavigationAPI(SubAPI):
@@ -356,69 +359,65 @@ class NavigationAPI(SubAPI):
         self.slam_mapping = _SlamHelper(api, 'map')
         self.slam_tracking = _SlamHelper(api, 'track')
 
-    def reset_slam(self):
-        return self._post('slam/reset')
+    async def reset_slam(self):
+        return await self._post('slam/reset')
 
-    def take_depth_pic(self):
-        with self.slam_streaming:
-            return self._get_j('cameras/depth')
+    async def take_depth_pic(self):
+        async with self.slam_streaming:
+            return await self._get_j('cameras/depth')
 
-    def take_fisheye_pic(self):
-        with self.slam_streaming:
-            return self._get_j('cameras/fisheye')
+    async def take_fisheye_pic(self):
+        async with self.slam_streaming:
+            return await self._get_j('cameras/fisheye')
 
-    def get_map(self):
-        with self.slam_mapping:
-            return self._get_j('slam/map')
+    async def get_map(self):
+        async with self.slam_mapping:
+            return await self._get_j('slam/map')
 
     @staticmethod
     def _format_coords(*coords: Coords):
         return ','.join(f'{c.x}:{c.y}' for c in coords)
 
-    def drive_to_coordinates(self, coords: Coords):
-        with self.slam_tracking:
-            self._post('drive/coordinates', dict(Destination=self._format_coords(coords)))
+    async def drive_to_coordinates(self, coords: Coords):
+        async with self.slam_tracking:
+            await self._post('drive/coordinates', dict(Destination=self._format_coords(coords)))
 
-    def follow_path(self, *coords: Coords):
-        with self.slam_tracking:
+    async def follow_path(self, *coords: Coords):
+        async with self.slam_tracking:
             if len(coords) == 1:
-                return self.drive_to_coordinates(*coords)
-            return self._post('drive/path', dict(Path=self._format_coords(*coords)))
+                return await self.drive_to_coordinates(*coords)
+            return await self._post('drive/path', dict(Path=self._format_coords(*coords)))
 
 
 class SkillAPI(SubAPI):
-    def stop(self, skill_name: Optional[str] = None):
-        self._post('skills/cancel', json_obj(Skill=skill_name))
+    async def stop(self, skill_name: Optional[str] = None):
+        await self._post('skills/cancel', json_obj(Skill=skill_name))
 
-    def delete(self, skill_uid: str):
-        self._delete(Skill=skill_uid)
+    async def delete(self, skill_uid: str):
+        await self._delete(Skill=skill_uid)
 
-    def get_running(self):
-        return [Skill.from_misty(s) for s in self._get_j('skills/running')]
+    async def get_running(self):
+        return [Skill.from_misty(s) for s in await self._get_j('skills/running')]
 
-    def get(self):
-        return self._get_j('skills')
+    async def get(self):
+        return await self._get_j('skills')
 
-    def run(self, skill_name_or_uid, method: Optional[str] = None):
-        return self._post('skills/start', json_obj(Skill=skill_name_or_uid, Method=method)).json()['result']
+    async def run(self, skill_name_or_uid, method: Optional[str] = None):
+        return await self._post('skills/start', json_obj(Skill=skill_name_or_uid, Method=method)).json()['result']
 
-    def save(self, zip_file_name: str, apply_immediately: bool = False, overwrite_existing: bool = True):
-        self._post('skills', dict(File=zip_file_name, ImmediatelyApply=apply_immediately,
-                                  OverwriteExisting=overwrite_existing))
+    async def save(self, zip_file_name: str, apply_immediately: bool = False, overwrite_existing: bool = True):
+        await self._post('skills', dict(File=zip_file_name, ImmediatelyApply=apply_immediately,
+                                        OverwriteExisting=overwrite_existing))
 
 
 # ======================================================================================================================
 
+
 class MistyAPI(RestAPI):
+    _pool = ThreadPoolExecutor(16)
+
     def __init__(self, ip):
         self.ip = ip
-
-        self.backpack_instance = None
-        self.time_of_flight_instance = [None] * 4
-        self.face_recognition_instance = None
-
-        self.available_subscriptions = ["StringMessage", "TimeOfFlight", "FaceDetection", "FaceRecognition",
-                                        "LocomotionCommand", "HaltCommand", "SelfState", "WorldState"]
 
     # ==================================================================================================================
     # Sub APIs
@@ -445,14 +444,22 @@ class MistyAPI(RestAPI):
 
         return res
 
-    def _get(self, endpoint, **params):
-        return requests.get(self._endpoint(endpoint, **params))
+    async def _request(self, method, endpoint, json=None, **params):
+        kwargs = {}
+        if json is not None:
+            kwargs['json'] = json
+        f = partial(requests.request, method, self._endpoint(endpoint, **params), **kwargs)
+        return await asyncio.get_running_loop().run_in_executor(self._pool, f)
 
-    def _get_j(self, endpoint, **params):
-        return self._get(endpoint, **params).json()['result']
+    async def _get(self, endpoint, **params):
+        return await self._request('GET', endpoint, **params)
 
-    def _post(self, endpoint, json: Optional[dict] = None, **params):
-        return requests.post(self._endpoint(endpoint, **params), json=json)
+    async def _get_j(self, endpoint, **params) -> Dict:
+        return await self._get(endpoint, **params).json()['result']
 
-    def _delete(self, endpoint, json: Optional[dict] = None, **params):
-        return requests.delete(self._endpoint(endpoint, **params), json=json)
+    async def _post(self, endpoint, json: Optional[dict] = None, **params):
+        return await self._request('POST', endpoint, **params, json=json)
+
+    async def _delete(self, endpoint, json: Optional[dict] = None, **params):
+        return await self._request('DELETE', endpoint, **params, json=json)
+
