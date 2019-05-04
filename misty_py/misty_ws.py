@@ -23,6 +23,10 @@ class TouchSensor(Enum):
     head_top = 'HeadTop'
     scruff = 'Scruff'
 
+    @property
+    def full_value(self):
+        return f'CapTouch_{self.value}'
+
 
 class BumpSensor(Enum):
     front_right = 'bfr'
