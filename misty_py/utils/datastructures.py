@@ -1,3 +1,4 @@
+import asyncio
 import json
 from abc import abstractmethod, ABC
 from enum import IntFlag
@@ -125,6 +126,10 @@ class json_obj(dict):
     def json_str(self) -> str:
         return json.dumps(self)
 
+    @classmethod
+    def from_str(cls, s: str):
+        return cls(**json.loads(s))
+
 
 class RestAPI(ABC):
     @abstractmethod
@@ -142,3 +147,14 @@ class RestAPI(ABC):
     @abstractmethod
     def _delete(self, endpoint, json: Optional[dict] = None, **params):
         """REST DELETE"""
+
+
+# class aobject:
+#     """enable async init of objects"""
+#     async def __new__(cls, *args, **kwargs):
+#         instance = super().__new__(cls)
+#         await instance.__init__(*args, **kwargs)
+#         return instance
+#
+#     async def __init__(self):
+#         pass

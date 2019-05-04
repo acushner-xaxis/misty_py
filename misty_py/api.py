@@ -7,6 +7,7 @@ from typing import Dict, List, Any, Type, TypeVar, Optional
 
 import requests
 
+from misty_ws import MistyWS, Sub
 from utils import *
 
 # TODO:
@@ -48,36 +49,11 @@ class SubAPI(RestAPI):
 T = TypeVar('T', bound=SubAPI)
 
 
-class APIDescriptor:
-    """
-    only instantiate SubAPIs when accessed for the first time
-
-    the SubAPIs must be annotated so this descriptor knows which type to instantiate
-
-    once instantiated, it overwrites itself with the instance
-    """
-
-    def __set_name__(self, cls, name):
-        self.name = name
-        self.api_type = eval(cls.__annotations__[name])
-
-    def __get__(self, instance: T, cls: Type[T]) -> T:
-        if not instance:
-            return self
-
-        res = instance.__dict__[self.name] = self.api_type(instance)
-        return res
-
-
 # ======================================================================================================================
 # SubAPIs
 # ======================================================================================================================
 
 class ImageAPI(SubAPI):
-    def __init__(self, api: MistyAPI):
-        super().__init__(api)
-        self.images = self.list()
-
     async def get(self, file_name: str, as_base64: bool = True) -> Image:
         # TODO:  test with as_base64 set to both True and False
         return Image.from_misty(await self._get_j('images', FileName=file_name, Base64=as_base64))
@@ -145,10 +121,6 @@ class ImageAPI(SubAPI):
 
 
 class AudioAPI(SubAPI):
-    def __init__(self, api: MistyAPI):
-        super().__init__(api)
-        self.audio = self.list()
-
     async def get(self, file_name: str) -> Any:
         # TODO: what the hell do we get back?
         return await self._get_j('audio', FileName=file_name)
@@ -181,7 +153,6 @@ class AudioAPI(SubAPI):
 class FaceAPI(SubAPI):
     def __init__(self, api: MistyAPI):
         super().__init__(api)
-        self.faces = self.list()
 
     async def cancel_training(self):
         """shouldn't need to call unless you want to manually stop something in progress"""
@@ -192,7 +163,7 @@ class FaceAPI(SubAPI):
 
     async def delete(self, *, name: Optional[str] = None, delete_all: bool = False):
         """rm faces from misty"""
-        if (delete_all and name) or not (delete_all or name):
+        if bool(delete_all) + bool(name) != 1:
             raise ValueError('set exactly one of `name` or `delete_all`')
 
         kwargs = {}
@@ -208,10 +179,14 @@ class FaceAPI(SubAPI):
         TODO: subscribe to FaceEvents to figure when done
         """
         await self._post('faces/detection/start')
+        sub_info = await self._api.ws.subscribe(Sub.face_recognition, self._process_face_message)
 
     async def stop_detection(self):
         """stop finding/detecting faces in misty's line of vision"""
         await self._post('faces/detection/stop')
+
+    async def _process_face_message(self, msg: json_obj):
+        print(msg)
 
     async def start_training(self):
         """
@@ -330,6 +305,7 @@ class SystemAPI(SubAPI):
 
 
 class _SlamHelper(SubAPI):
+    """manage various slam functions on misty"""
     def __init__(self, api: MistyAPI, endpoint: str):
         super().__init__(api)
         self._endpoint = endpoint
@@ -418,20 +394,20 @@ class MistyAPI(RestAPI):
 
     def __init__(self, ip):
         self.ip = ip
+        self.ws = MistyWS(ip)
 
-    # ==================================================================================================================
-    # Sub APIs
-    # ==================================================================================================================
+        # ==================================================================================================================
+        # APIs
+        # ==================================================================================================================
 
-    images: ImageAPI = APIDescriptor()
-    audio: AudioAPI = APIDescriptor()
-    faces: FaceAPI = APIDescriptor()
-    movement: MovementAPI = APIDescriptor()
-    system: SystemAPI = APIDescriptor()
-    navigation: NavigationAPI = APIDescriptor()
-    skills: SkillAPI = APIDescriptor()
+        self.images = ImageAPI(self)
+        self.audio = AudioAPI(self)
+        self.faces = FaceAPI(self)
+        self.movement = MovementAPI(self)
+        self.system = SystemAPI(self)
+        self.navigation = NavigationAPI(self)
+        self.skills = SkillAPI(self)
 
-    # ==================================================================================================================
     # ==================================================================================================================
     # REST CALLS
     # ==================================================================================================================
@@ -462,4 +438,3 @@ class MistyAPI(RestAPI):
 
     async def _delete(self, endpoint, json: Optional[dict] = None, **params):
         return await self._request('DELETE', endpoint, **params, json=json)
-

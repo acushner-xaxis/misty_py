@@ -47,10 +47,13 @@ class Sub(Enum):
     audio_play_complete = 'AudioPlayComplete'
 
 
+handler_type = Callable[[json_obj], Awaitable[None]]
+
+
 class SubscriptionInfo(NamedTuple):
     id: int
     type: Sub
-    handler: Callable
+    handler: handler_type
 
     @property
     def event_name(self) -> str:
@@ -64,18 +67,21 @@ class _Subscriptions:
         self._event_name_to_si: Dict[str, SubscriptionInfo] = {}
         self._type_to_sis: Dict[Sub, Set[SubscriptionInfo]] = defaultdict(set)
 
-    def subscribe(self, sub: Sub, handler: Callable[[Dict], None]):
+    def subscribe(self, sub: Sub, handler: handler_type) -> SubscriptionInfo:
         si = SubscriptionInfo(self._next_sub_id(), sub, handler)
         self._event_name_to_si[si.event_name] = si
         self._type_to_sis[si.type].add(si)
         return si
 
-    def unsubscribe(self, sub_info: SubscriptionInfo):
-        """return True if should unsubscribe"""
+    def unsubscribe(self, sub_info: SubscriptionInfo) -> bool:
+        """return True if should unsubscribe from feed"""
         del self._event_name_to_si[sub_info.event_name]
         event_type_subs = self._type_to_sis[sub_info.type]
         event_type_subs.remove(sub_info)
         return not event_type_subs
+
+    async def handle(self, sub: Sub, msg: json_obj):
+        await asyncio.gather(*(si.handler(msg) for si in self._type_to_sis[sub]))
 
     def _next_sub_id(self) -> int:
         return next(self._count)
@@ -91,7 +97,7 @@ class MistyWS:
     def _endpoint(self):
         return f'http://{self.ip}/pubsub'
 
-    async def a_subscribe(self, sub: Sub, handler: Callable[[Dict], None], debounce_ms: int = 250) -> SubscriptionInfo:
+    async def subscribe(self, sub: Sub, handler: handler_type, debounce_ms: int = 250) -> SubscriptionInfo:
         sub_info = self._subscriptions.subscribe(sub, handler)
         payload = json_obj(Operation='subscribe', Type=sub.value, DebounceMS=debounce_ms, EventName=sub_info.event_name)
         async with websockets.connect(self._endpoint) as ws:
@@ -107,4 +113,5 @@ class MistyWS:
     async def handle(self):
         async with websockets.connect(self._endpoint) as ws:
             async for msg in ws:
-                print(msg)
+                o = json_obj.from_str(msg)
+                await self._subscriptions.handle(o.Type, o)

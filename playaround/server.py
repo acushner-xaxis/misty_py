@@ -7,6 +7,8 @@ import arrow
 import websockets
 import uvloop
 
+from utils import json_obj
+
 uvloop.install()
 
 
@@ -41,7 +43,8 @@ async def echo(websocket, path):
 
 async def stream(websocket, path, sleep_time=1.0):
     while True:
-        await websocket.send(Sub.random())
+        j = json_obj(Type=Sub.random())
+        await websocket.send(j.json_str)
         await asyncio.sleep(sleep_time)
 
 
@@ -55,7 +58,7 @@ async def handler(websocket, path):
 
 
 loop = asyncio.get_event_loop()
-loop.run_until_complete(websockets.serve(echo, 'localhost', 8898))
-# loop.run_until_complete(websockets.serve(partial(stream, sleep_time=1.0), 'localhost', 8898))
+# loop.run_until_complete(websockets.serve(echo, 'localhost', 8898))
+loop.run_until_complete(websockets.serve(partial(stream, sleep_time=1.0), 'localhost', 8898))
 # loop.run_until_complete(websockets.serve(handler, 'localhost', 8898))
 loop.run_forever()
