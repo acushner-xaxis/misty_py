@@ -42,6 +42,7 @@ async def echo(websocket, path):
 
 
 async def stream(websocket, path, sleep_time=1.0):
+    print(type(websocket), websocket, type(path), path)
     while True:
         j = json_obj(Type=Sub.random())
         await websocket.send(j.json_str)
