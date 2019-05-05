@@ -1,4 +1,6 @@
-SelfState = {
+from utils import json_obj
+
+SelfState = json_obj(**{
     "eventName": "SelfState",
     "message": {
         "acceleration": None,
@@ -170,4 +172,4 @@ SelfState = {
         }
     },
     "type": "SelfState"
-}
+})

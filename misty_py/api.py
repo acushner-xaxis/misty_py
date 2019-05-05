@@ -5,9 +5,10 @@ from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
 from typing import Dict, List, Any, Type, TypeVar, Optional
 
+import arrow
 import requests
 
-from misty_ws import MistyWS, Sub
+from misty_ws import MistyWS, Sub, SubscriptionInfo
 from utils import *
 
 # TODO:
@@ -29,6 +30,11 @@ NAME = 'co-pi-lette'
 # ======================================================================================================================
 # ======================================================================================================================
 
+async def delay(num_secs, coro):
+    await asyncio.sleep(num_secs)
+    await coro
+
+
 class SubAPI(RestAPI):
     def __init__(self, api: MistyAPI):
         self._api = api
@@ -44,9 +50,6 @@ class SubAPI(RestAPI):
 
     async def _delete(self, endpoint, json: Optional[dict] = None, **params):
         return await self._api._delete(endpoint, json, **params)
-
-
-T = TypeVar('T', bound=SubAPI)
 
 
 # ======================================================================================================================
@@ -100,9 +103,8 @@ class ImageAPI(SubAPI):
                            overwrite_existing=True):
         self._validate_take_picture(file_name, width, height, show_on_screen)
 
-        payload = json_obj()
-        payload.add_if_not_none(Base64=get_result, FileName=file_name, Width=width, Height=height,
-                                DisplayOnScreen=show_on_screen, OverwriteExisting=overwrite_existing)
+        payload = json_obj.from_not_none(Base64=get_result, FileName=file_name, Width=width, Height=height,
+                                         DisplayOnScreen=show_on_screen, OverwriteExisting=overwrite_existing)
         return await self._get_j('cameras/rgb', **payload)
 
     async def start_recording_video(self):
@@ -121,6 +123,8 @@ class ImageAPI(SubAPI):
 
 
 class AudioAPI(SubAPI):
+    """record, play, change volume, manage audio files"""
+
     async def get(self, file_name: str) -> Any:
         # TODO: what the hell do we get back?
         return await self._get_j('audio', FileName=file_name)
@@ -138,8 +142,7 @@ class AudioAPI(SubAPI):
         await self._post('audio', payload)
 
     async def play(self, file_name_or_id: str, volume: int = 100, as_file_name: bool = True):
-        volume = min(max(volume, 1), 100)
-        payload = dict(Volume=volume)
+        payload = dict(Volume=min(max(volume, 1), 100))
         payload['FileName' if as_file_name else 'AssetId'] = file_name_or_id
         await self._post('audio/play', payload)
 
@@ -149,14 +152,23 @@ class AudioAPI(SubAPI):
     async def set_default_volume(self, volume):
         await self._post('audio/volume', dict(Volume=min(max(volume, 0), 100)))
 
+    async def start_recording(self, filename: str, len_secs: Optional[int] = None):
+        fn = f'{filename.rstrip(".wav")}.wav'
+        await self._post('audio/record/start', json_obj(FileName=fn))
+        if len_secs is not None:
+            len_secs = min(max(len_secs, 0), 60)
+            if len_secs:
+                await delay(len_secs, self.stop_recording())
+
+    async def stop_recording(self):
+        await self._post('audio/record/stop')
+
 
 class FaceAPI(SubAPI):
+    """perform face detection, training, recognition; delete faces"""
+
     def __init__(self, api: MistyAPI):
         super().__init__(api)
-
-    async def cancel_training(self):
-        """shouldn't need to call unless you want to manually stop something in progress"""
-        await self._get('faces/training/cancel')
 
     async def list(self) -> List[str]:
         return await self._get_j('faces')
@@ -176,7 +188,7 @@ class FaceAPI(SubAPI):
         """
         start finding/detecting faces in misty's line of vision
 
-        TODO: subscribe to FaceEvents to figure when done
+        TODO: subscribe to FaceEvents to figure out when it's done?
         """
         await self._post('faces/detection/start')
         sub_info = await self._api.ws.subscribe(Sub.face_recognition, self._process_face_message)
@@ -185,8 +197,9 @@ class FaceAPI(SubAPI):
         """stop finding/detecting faces in misty's line of vision"""
         await self._post('faces/detection/stop')
 
-    async def _process_face_message(self, msg: json_obj):
+    async def _process_face_message(self, msg: json_obj, sub_info: SubscriptionInfo):
         print(msg)
+        print(sub_info)
 
     async def start_training(self):
         """
@@ -197,6 +210,10 @@ class FaceAPI(SubAPI):
             - change LED colors, display some text
         """
         await self._post('faces/training/start')
+
+    async def cancel_training(self):
+        """shouldn't need to call unless you want to manually stop something in progress"""
+        await self._get('faces/training/cancel')
 
     async def stop_training(self):
         """stop training a particular face"""
@@ -211,6 +228,8 @@ class FaceAPI(SubAPI):
 
 
 class MovementAPI(SubAPI):
+    """specifically control driving movement, head, arms, etc"""
+
     @staticmethod
     def _validate_vel_pct(**vel_pcts):
         fails = {}
@@ -230,6 +249,7 @@ class MovementAPI(SubAPI):
         self._validate_vel_pct(linear_vel_pct=linear_vel_pct, angular_vel_pct=angular_vel_pct)
         payload = dict(LinearVelocity=linear_vel_pct, AngularVelocity=angular_vel_pct)
         endpoint = 'drive'
+
         if time_ms:
             payload['TimeMS'] = time_ms
             endpoint += '/time'
@@ -243,7 +263,9 @@ class MovementAPI(SubAPI):
 
     async def move_arms(self, *arm_settings: ArmSettings):
         """pass either/both left and right arm settings"""
-        await self._post('arms/set', {k: v for arm in arm_settings for k, v in arm.json.items()})
+        payload = {k: v for arm in arm_settings for k, v in arm.json.items()}
+        if payload:
+            await self._post('arms/set', payload)
 
     async def move_head(self, settings: HeadSettings):
         await self._post('head', settings.json)
@@ -255,7 +277,7 @@ class MovementAPI(SubAPI):
         if `everything` is set, will stop everything (i.e. halt)
         """
         if everything:
-            return self.halt()
+            return await self.halt()
         await self._post('drive/stop')
 
     async def halt(self):
@@ -264,6 +286,12 @@ class MovementAPI(SubAPI):
 
 
 class SystemAPI(SubAPI):
+    """
+    interact with various system elements on the robot
+
+    get logs, battery, etc
+    """
+
     async def clear_error_msg(self):
         await self._post('text/clear')
 
@@ -280,7 +308,7 @@ class SystemAPI(SubAPI):
         return await self._get_j('device')
 
     async def help(self, command: Optional[str] = None):
-        params = json_obj(command=command)
+        params = json_obj.from_not_none(command=command)
         return await self._get_j('help', **params)
 
     async def get_logs(self):
@@ -294,18 +322,18 @@ class SystemAPI(SubAPI):
         payload = dict(NetworkName=name, Password=password)
         await self._post('network', payload)
 
-    async def trigger_skill_event(self, skill_uid: str, event_name: str, json: Optional[Dict]):
-        """send an event to a currently running skill"""
-        payload = json_obj(UniqueId=skill_uid, EventName=event_name, Payload=json)
-        await self._post('skills/event', payload)
-
     async def send_to_backpack(self, msg: str):
         """not sure what kind of data/msg we can send - perhaps Base64 encode to send binary data?"""
         await self._post('serial', dict(Message=msg))
 
 
 class _SlamHelper(SubAPI):
-    """manage various slam functions on misty"""
+    """
+    manage various slam functions on misty
+
+    used by the NavigationAPI
+    """
+
     def __init__(self, api: MistyAPI, endpoint: str):
         super().__init__(api)
         self._endpoint = endpoint
@@ -329,6 +357,12 @@ class _SlamHelper(SubAPI):
 
 
 class NavigationAPI(SubAPI):
+    """
+    control mapping, tracking, driving, etc
+
+    can also take depth/fisheye pics
+    """
+
     def __init__(self, api: MistyAPI):
         super().__init__(api)
         self.slam_streaming = _SlamHelper(api, 'streaming')
@@ -366,8 +400,10 @@ class NavigationAPI(SubAPI):
 
 
 class SkillAPI(SubAPI):
+    """interact with skills available on misty"""
+
     async def stop(self, skill_name: Optional[str] = None):
-        await self._post('skills/cancel', json_obj(Skill=skill_name))
+        await self._post('skills/cancel', json_obj.from_not_none(Skill=skill_name))
 
     async def delete(self, skill_uid: str):
         await self._delete(Skill=skill_uid)
@@ -379,11 +415,17 @@ class SkillAPI(SubAPI):
         return await self._get_j('skills')
 
     async def run(self, skill_name_or_uid, method: Optional[str] = None):
-        return await self._post('skills/start', json_obj(Skill=skill_name_or_uid, Method=method)).json()['result']
+        return await self._post('skills/start',
+                                json_obj.from_not_none(Skill=skill_name_or_uid, Method=method)).json()['result']
 
     async def save(self, zip_file_name: str, apply_immediately: bool = False, overwrite_existing: bool = True):
         await self._post('skills', dict(File=zip_file_name, ImmediatelyApply=apply_immediately,
                                         OverwriteExisting=overwrite_existing))
+
+    async def trigger_skill_event(self, skill_uid: str, event_name: str, json: Optional[Dict] = None):
+        """send an event to a currently running skill"""
+        payload = json_obj.from_not_none(UniqueId=skill_uid, EventName=event_name, Payload=json)
+        await self._post('skills/event', payload)
 
 
 # ======================================================================================================================
@@ -421,9 +463,7 @@ class MistyAPI(RestAPI):
         return res
 
     async def _request(self, method, endpoint, json=None, **params):
-        kwargs = {}
-        if json is not None:
-            kwargs['json'] = json
+        kwargs = json_obj.from_not_none(json=json)
         f = partial(requests.request, method, self._endpoint(endpoint, **params), **kwargs)
         return await asyncio.get_running_loop().run_in_executor(self._pool, f)
 

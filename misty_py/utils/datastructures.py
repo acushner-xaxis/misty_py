@@ -102,19 +102,29 @@ class HeadSettings(NamedTuple):
 # ======================================================================================================================
 
 class json_obj(dict):
-    """will only add values if they are not `None`"""
-
     def __init__(self, **kwargs):
         super().__init__()
-        self.add_if_not_none(**kwargs)
+        self._add(**kwargs)
+
+    @classmethod
+    def from_not_none(cls, **key_value_pairs):
+        res = cls()
+        res.add_if_not_none(**key_value_pairs)
+
+    def _add(self, _if_not_none=False, **key_value_pairs):
+        for k, v in key_value_pairs.items():
+            if not _if_not_none or v is not None:
+                if isinstance(v, dict):
+                    self[k] = json_obj(**v)
+                else:
+                    self[k] = v
 
     def add_if_not_none(self, **key_value_pairs):
-        for k, v in key_value_pairs.items():
-            if v is not None:
-                self[k] = v
+        self._add(_if_not_none=True, **key_value_pairs)
 
     def __setattr__(self, key, value):
-        self[key] = value
+        d = {key: value}
+        self._add(**d)
 
     def __getattr__(self, key):
         return self[key]
@@ -129,6 +139,12 @@ class json_obj(dict):
     @classmethod
     def from_str(cls, s: str):
         return cls(**json.loads(s))
+
+    def __str__(self):
+        strs = (f'{k}={v!r}' for k, v in self.items())
+        return f'json_obj({", ".join(strs)})'
+
+    __repr__ = __str__
 
 
 class RestAPI(ABC):
@@ -158,3 +174,17 @@ class RestAPI(ABC):
 #
 #     async def __init__(self):
 #         pass
+
+
+class Singleton(type):
+    def __new__(mcs, name, bases, body):
+        cls = super().__new__(mcs, name, bases, body)
+        cls._cache = {}
+        return cls
+
+    def __call__(cls, *args):
+        try:
+            res = cls._cache[args]
+        except KeyError:
+            res = cls._cache[args] = super().__call__(*args)
+        return res

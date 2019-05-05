@@ -1,3 +1,4 @@
+from __future__ import annotations
 import asyncio
 from asyncio import Task
 from collections import defaultdict
@@ -8,6 +9,7 @@ from typing import Callable, Awaitable, Dict, NamedTuple, Set
 import websockets
 
 from utils import json_obj
+from utils.datastructures import Singleton
 
 __author__ = 'acushner'
 
@@ -52,9 +54,6 @@ class Sub(Enum):
     audio_play_complete = 'AudioPlayComplete'
 
 
-handler_type = Callable[[json_obj], Awaitable[None]]
-
-
 class SubscriptionInfo(NamedTuple):
     id: int
     type: Sub
@@ -63,6 +62,9 @@ class SubscriptionInfo(NamedTuple):
     @property
     def event_name(self) -> str:
         return f'{self.type.value}_{self.id:04}'
+
+
+handler_type = Callable[[json_obj, SubscriptionInfo], Awaitable[None]]
 
 
 class _Subscriptions:
@@ -92,33 +94,44 @@ class _Subscriptions:
         return next(self._count)
 
 
-class MistyWS:
+class TaskInfo(NamedTuple):
+    task: Task
+    ws: websockets.WebSocketClientProtocol
+
+
+class MistyWS(metaclass=Singleton):
+    _count = count(1)
 
     def __init__(self, ip):
         self.ip = ip
-        self._subscriptions = _Subscriptions()
-        self._tasks: Dict[str, Task] = {}
+        self._tasks: Dict[SubscriptionInfo, TaskInfo] = {}
 
     @property
     def _endpoint(self):
-        return f'http://{self.ip}/pubsub'
+        return f'ws://{self.ip}/pubsub'
+
+    def _next_sub_id(self) -> int:
+        return next(self._count)
 
     async def subscribe(self, sub: Sub, handler: handler_type, debounce_ms: int = 250) -> SubscriptionInfo:
-        sub_info = self._subscriptions.subscribe(sub, handler)
+        sub_info = SubscriptionInfo(self._next_sub_id(), sub, handler)
         payload = json_obj(Operation='subscribe', Type=sub.value, DebounceMS=debounce_ms, EventName=sub_info.event_name)
-        async with websockets.connect(self._endpoint) as ws:
-            await ws.send(payload.json_str)
-            asyncio.create_task(self.handle(ws, handler))
+
+        ws = await websockets.connect(self._endpoint)
+        self._tasks[sub_info] = TaskInfo(asyncio.create_task(self._handle(ws, handler, sub_info)), ws)
+        await ws.send(payload.json_str)
+
         return sub_info
 
     async def unsubscribe(self, sub_info: SubscriptionInfo):
-        if self._subscriptions.unsubscribe(sub_info):
-            payload = json_obj(Operation='unsubscribe', EventName=sub_info.event_name, Message='')
-            async with websockets.connect(self._endpoint) as ws:
-                await ws.send(payload.json_str)
+        payload = json_obj(Operation='unsubscribe', EventName=sub_info.event_name, Message=str(sub_info))
+        ti = self._tasks[sub_info]
+        ti.task.cancel()
+        await ti.ws.send(payload.json_str)
+        await ti.ws.close()
 
     @staticmethod
-    async def handle(ws, handler):
+    async def _handle(ws, handler, sub_info):
         async for msg in ws:
             o = json_obj.from_str(msg)
-            await handler(o)
+            await handler(o, sub_info)
