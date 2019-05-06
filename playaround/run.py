@@ -3,18 +3,30 @@ import asyncio
 import arrow
 import uvloop
 
-from api import MistyAPI, delay
-from misty_ws import MistyWS, Sub, SubscriptionInfo
+from api import MistyAPI
+from misty_ws import MistyWS, Sub, SubInfo, SubData
 from utils import json_obj, RGB
 
-api = MistyAPI('1.2.3.4')
+api = MistyAPI('localhost:9999')
 
 uvloop.install()
-mws = MistyWS('localhost:9999')
-mws2 = MistyWS('localhost:9999')
+mws = MistyWS(api)
+mws2 = MistyWS(api)
 print(mws is mws2)
 
 print(RGB.from_hex(0xFFFFFF).hex)
+
+
+class C:
+    def __init__(self):
+        self.t = asyncio.run(self.atest())
+        print(self.t)
+
+    async def atest(self):
+        print('in')
+        await asyncio.sleep(1)
+        print('done')
+        return 4
 
 
 async def run():
@@ -23,25 +35,33 @@ async def run():
     await mws.unsubscribe(sub_info)
 
 
-async def delay_test():
-    async def helper():
-        print('yo!!!!')
+async def cxl_test():
+    async def helper(sleep_time=4):
+        print('in here')
+        await asyncio.sleep(sleep_time)
 
-    print(arrow.now())
-    t = asyncio.create_task(delay(2, helper()))
-    await asyncio.wait_for(t, timeout=1)
-    # t.cancel()
-    print('tuse')
-    print(arrow.now())
+    t = asyncio.create_task(helper())
+    await asyncio.sleep(0)
+    t.cancel()
+    # await t
 
 
-async def handler(o: json_obj, sub_info: SubscriptionInfo):
-    print(o)
-    print(sub_info)
+async def handler(sd: SubData):
+    print(sd)
 
+
+async def c_test():
+    c = C()
+    print(c.t)
+
+
+# c = C()
+# print(c.t)
 
 loop = asyncio.get_event_loop()
-loop.run_until_complete(delay_test())
+loop.run_until_complete(run())
+print(mws.api.subscription_data[Sub.self_state])
+# loop.run_until_complete(cxl_test())
 # class aobject:
 #     async def __new__(cls, *args, **kwargs):
 #         instance = super().__new__(cls)

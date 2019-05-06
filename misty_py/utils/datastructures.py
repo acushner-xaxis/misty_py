@@ -4,7 +4,7 @@ from abc import abstractmethod, ABC
 from enum import IntFlag
 from typing import NamedTuple, Dict, Optional
 
-__all__ = ('SlamStatus', 'Coords', 'Wifi', 'Skill', 'Image', 'Audio',
+__all__ = ('SlamStatus', 'Coords', 'Wifi', 'Skill', 'Image', 'Audio', 'Singleton',
            'ArmSettings', 'HeadSettings', 'json_obj', 'RestAPI')
 
 

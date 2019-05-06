@@ -1,11 +1,11 @@
 from __future__ import annotations
+
 import asyncio
-from asyncio import Task
-from collections import defaultdict
 from enum import Enum
 from itertools import count
-from typing import Callable, Awaitable, Dict, NamedTuple, Set
+from typing import Callable, Awaitable, Dict, NamedTuple
 
+import arrow
 import websockets
 
 from utils import json_obj
@@ -54,7 +54,8 @@ class Sub(Enum):
     audio_play_complete = 'AudioPlayComplete'
 
 
-class SubscriptionInfo(NamedTuple):
+class SubInfo(NamedTuple):
+    """identifying information about a particular subscription"""
     id: int
     type: Sub
     handler: handler_type
@@ -64,57 +65,39 @@ class SubscriptionInfo(NamedTuple):
         return f'{self.type.value}_{self.id:04}'
 
 
-handler_type = Callable[[json_obj, SubscriptionInfo], Awaitable[None]]
+class SubData(NamedTuple):
+    """information about a particular msg from a subscription"""
+    time: arrow.Arrow
+    data: json_obj
+    sub_info: SubInfo
 
-
-class _Subscriptions:
-    _count = count(1)
-
-    def __init__(self):
-        self._event_name_to_si: Dict[str, SubscriptionInfo] = {}
-        self._type_to_sis: Dict[Sub, Set[SubscriptionInfo]] = defaultdict(set)
-
-    def subscribe(self, sub: Sub, handler: handler_type) -> SubscriptionInfo:
-        si = SubscriptionInfo(self._next_sub_id(), sub, handler)
-        self._event_name_to_si[si.event_name] = si
-        self._type_to_sis[si.type].add(si)
-        return si
-
-    def unsubscribe(self, sub_info: SubscriptionInfo) -> bool:
-        """return True if should unsubscribe from feed"""
-        del self._event_name_to_si[sub_info.event_name]
-        event_type_subs = self._type_to_sis[sub_info.type]
-        event_type_subs.remove(sub_info)
-        return not event_type_subs
-
-    async def handle(self, sub: Sub, msg: json_obj):
-        await asyncio.gather(*(si.handler(msg) for si in self._type_to_sis[sub]))
-
-    def _next_sub_id(self) -> int:
-        return next(self._count)
+    @classmethod
+    def from_data(cls, o: json_obj, si: SubInfo):
+        return cls(arrow.now(), o, si)
 
 
 class TaskInfo(NamedTuple):
-    task: Task
+    task: asyncio.Task
     ws: websockets.WebSocketClientProtocol
+
+
+handler_type = Callable[[SubData], Awaitable[None]]
 
 
 class MistyWS(metaclass=Singleton):
     _count = count(1)
 
-    def __init__(self, ip):
-        self.ip = ip
-        self._tasks: Dict[SubscriptionInfo, TaskInfo] = {}
-
-    @property
-    def _endpoint(self):
-        return f'ws://{self.ip}/pubsub'
+    def __init__(self, misty_api):
+        from api import MistyAPI
+        self.api: MistyAPI = misty_api
+        self._endpoint = f'ws://{self.api.ip}/pubsub'
+        self._tasks: Dict[SubInfo, TaskInfo] = {}
 
     def _next_sub_id(self) -> int:
         return next(self._count)
 
-    async def subscribe(self, sub: Sub, handler: handler_type, debounce_ms: int = 250) -> SubscriptionInfo:
-        sub_info = SubscriptionInfo(self._next_sub_id(), sub, handler)
+    async def subscribe(self, sub: Sub, handler: handler_type, debounce_ms: int = 250) -> SubInfo:
+        sub_info = SubInfo(self._next_sub_id(), sub, handler)
         payload = json_obj(Operation='subscribe', Type=sub.value, DebounceMS=debounce_ms, EventName=sub_info.event_name)
 
         ws = await websockets.connect(self._endpoint)
@@ -123,15 +106,48 @@ class MistyWS(metaclass=Singleton):
 
         return sub_info
 
-    async def unsubscribe(self, sub_info: SubscriptionInfo):
-        payload = json_obj(Operation='unsubscribe', EventName=sub_info.event_name, Message=str(sub_info))
-        ti = self._tasks[sub_info]
+    async def unsubscribe(self, sub_info: SubInfo):
+        try:
+            ti = self._tasks[sub_info]
+        except KeyError:
+            return False
+
+        del self._tasks[sub_info]
         ti.task.cancel()
+
+        payload = json_obj(Operation='unsubscribe', EventName=sub_info.event_name, Message=str(sub_info))
         await ti.ws.send(payload.json_str)
         await ti.ws.close()
+        return True
 
-    @staticmethod
-    async def _handle(ws, handler, sub_info):
+    async def _handle(self, ws, handler: handler_type, sub_info):
         async for msg in ws:
             o = json_obj.from_str(msg)
-            await handler(o, sub_info)
+            sd = self.api.subscription_data[sub_info.type] = SubData.from_data(o, sub_info)
+            await handler(sd)
+
+# class _Subscriptions:
+#     _count = count(1)
+#
+#     def __init__(self):
+#         self._event_name_to_si: Dict[str, SubInfo] = {}
+#         self._type_to_sis: Dict[Sub, Set[SubInfo]] = defaultdict(set)
+#
+#     def subscribe(self, sub: Sub, handler: handler_type) -> SubInfo:
+#         si = SubInfo(self._next_sub_id(), sub, handler)
+#         self._event_name_to_si[si.event_name] = si
+#         self._type_to_sis[si.type].add(si)
+#         return si
+#
+#     def unsubscribe(self, sub_info: SubInfo) -> bool:
+#         """return True if should unsubscribe from feed"""
+#         del self._event_name_to_si[sub_info.event_name]
+#         event_type_subs = self._type_to_sis[sub_info.type]
+#         event_type_subs.remove(sub_info)
+#         return not event_type_subs
+#
+#     async def handle(self, sub: Sub, msg: json_obj):
+#         await asyncio.gather(*(si.handler(msg) for si in self._type_to_sis[sub]))
+#
+#     def _next_sub_id(self) -> int:
+#         return next(self._count)

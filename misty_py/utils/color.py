@@ -44,5 +44,3 @@ class RGB(NamedTuple):
     def validate(self):
         if any(c < 0 or c > 255 for c in self):
             raise ValueError(f'color values must be in [0, 255]: {self}')
-
-

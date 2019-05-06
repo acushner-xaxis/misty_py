@@ -3,12 +3,12 @@ from __future__ import annotations
 import asyncio
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
-from typing import Dict, List, Any, Type, TypeVar, Optional
+from typing import Dict, List, Any, Optional, Set
 
 import arrow
 import requests
 
-from misty_ws import MistyWS, Sub, SubscriptionInfo
+from misty_ws import MistyWS, Sub, SubInfo, SubData
 from utils import *
 
 # TODO:
@@ -30,12 +30,13 @@ NAME = 'co-pi-lette'
 # ======================================================================================================================
 # ======================================================================================================================
 
-async def delay(num_secs, coro):
-    await asyncio.sleep(num_secs)
-    await coro
 
+class PartialAPI(RestAPI):
+    """
+    represent part of the overall api
 
-class SubAPI(RestAPI):
+    helps break down methods into logical groups such as face, image, audio, etc
+    """
     def __init__(self, api: MistyAPI):
         self._api = api
 
@@ -56,14 +57,20 @@ class SubAPI(RestAPI):
 # SubAPIs
 # ======================================================================================================================
 
-class ImageAPI(SubAPI):
+class ImageAPI(PartialAPI):
+    def __init__(self, api: MistyAPI):
+        super().__init__(api)
+        # TODO: add back in once we have misty
+        # self.saved_images = asyncio.run(self.list())
+
     async def get(self, file_name: str, as_base64: bool = True) -> Image:
         # TODO:  test with as_base64 set to both True and False
         return Image.from_misty(await self._get_j('images', FileName=file_name, Base64=as_base64))
 
     async def list(self) -> Dict[str, Image]:
         images = (Image.from_misty(i) for i in await self._get_j('images/list'))
-        return {i.name: i for i in images}
+        self.saved_images = {i.name: i for i in images}
+        return self.saved_images
 
     async def upload(self, file_name: str, as_byte_array: bool = False, width: Optional[int] = None,
                      height: Optional[int] = None, apply_immediately: bool = False, overwrite: bool = True):
@@ -122,8 +129,13 @@ class ImageAPI(SubAPI):
         return await self._get_j('video')
 
 
-class AudioAPI(SubAPI):
+class AudioAPI(PartialAPI):
     """record, play, change volume, manage audio files"""
+
+    def __init__(self, api: MistyAPI):
+        super().__init__(api)
+        # TODO: add back in once we have misty
+        # self.saved_audio = asyncio.run(self.list())
 
     async def get(self, file_name: str) -> Any:
         # TODO: what the hell do we get back?
@@ -131,7 +143,8 @@ class AudioAPI(SubAPI):
 
     async def list(self) -> Dict[str, Audio]:
         audio = (Audio.from_misty(a) for a in await self._get_j('audio/list'))
-        return {a.name: a for a in audio}
+        self.saved_audio = {a.name: a for a in audio}
+        return self.saved_audio
 
     async def upload(self, file_name: str, as_byte_array: bool = False, apply_immediately: bool = False,
                      overwrite: bool = True):
@@ -152,26 +165,30 @@ class AudioAPI(SubAPI):
     async def set_default_volume(self, volume):
         await self._post('audio/volume', dict(Volume=min(max(volume, 0), 100)))
 
-    async def start_recording(self, filename: str, len_secs: Optional[int] = None):
+    async def start_recording(self, filename: str, how_long_secs: Optional[float] = None):
         fn = f'{filename.rstrip(".wav")}.wav'
         await self._post('audio/record/start', json_obj(FileName=fn))
-        if len_secs is not None:
-            len_secs = min(max(len_secs, 0), 60)
-            if len_secs:
-                await delay(len_secs, self.stop_recording())
+        if how_long_secs is not None:
+            how_long_secs = min(max(how_long_secs, 0), 60)
+            if how_long_secs:
+                await asyncio.sleep(how_long_secs)
+                await self.stop_recording()
 
     async def stop_recording(self):
         await self._post('audio/record/stop')
 
 
-class FaceAPI(SubAPI):
+class FaceAPI(PartialAPI):
     """perform face detection, training, recognition; delete faces"""
 
     def __init__(self, api: MistyAPI):
         super().__init__(api)
+        # TODO: add back in once we have misty
+        # self.saved_faces = asyncio.run(self.list())
 
-    async def list(self) -> List[str]:
-        return await self._get_j('faces')
+    async def list(self) -> Set[str]:
+        self.saved_faces = set(await self._get_j('faces'))
+        return self.saved_faces
 
     async def delete(self, *, name: Optional[str] = None, delete_all: bool = False):
         """rm faces from misty"""
@@ -197,7 +214,7 @@ class FaceAPI(SubAPI):
         """stop finding/detecting faces in misty's line of vision"""
         await self._post('faces/detection/stop')
 
-    async def _process_face_message(self, msg: json_obj, sub_info: SubscriptionInfo):
+    async def _process_face_message(self, msg: json_obj, sub_info: SubInfo):
         print(msg)
         print(sub_info)
 
@@ -211,13 +228,13 @@ class FaceAPI(SubAPI):
         """
         await self._post('faces/training/start')
 
-    async def cancel_training(self):
-        """shouldn't need to call unless you want to manually stop something in progress"""
-        await self._get('faces/training/cancel')
-
     async def stop_training(self):
         """stop training a particular face"""
         await self._post('faces/training/stop')
+
+    async def cancel_training(self):
+        """shouldn't need to call unless you want to manually stop something in progress"""
+        await self._get('faces/training/cancel')
 
     async def start_recognition(self):
         await self._post('faces/recognition/start')
@@ -227,7 +244,7 @@ class FaceAPI(SubAPI):
         await self._post('faces/recognition/stop')
 
 
-class MovementAPI(SubAPI):
+class MovementAPI(PartialAPI):
     """specifically control driving movement, head, arms, etc"""
 
     @staticmethod
@@ -285,7 +302,7 @@ class MovementAPI(SubAPI):
         await self._post('robot/halt')
 
 
-class SystemAPI(SubAPI):
+class SystemAPI(PartialAPI):
     """
     interact with various system elements on the robot
 
@@ -327,7 +344,7 @@ class SystemAPI(SubAPI):
         await self._post('serial', dict(Message=msg))
 
 
-class _SlamHelper(SubAPI):
+class _SlamHelper(PartialAPI):
     """
     manage various slam functions on misty
 
@@ -337,7 +354,7 @@ class _SlamHelper(SubAPI):
     def __init__(self, api: MistyAPI, endpoint: str):
         super().__init__(api)
         self._endpoint = endpoint
-        self.num_current_slam_streams = 0
+        self._num_current_slam_streams = 0
 
     async def start(self):
         return await self._post(f'slam/{self._endpoint}/start')
@@ -346,17 +363,17 @@ class _SlamHelper(SubAPI):
         return await self._post(f'slam/{self._endpoint}/stop')
 
     async def __aenter__(self):
-        self.num_current_slam_streams += 1
-        if self.num_current_slam_streams == 1:
+        self._num_current_slam_streams += 1
+        if self._num_current_slam_streams == 1:
             await self.start()
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        self.num_current_slam_streams -= 1
-        if self.num_current_slam_streams == 0:
+        self._num_current_slam_streams -= 1
+        if self._num_current_slam_streams == 0:
             await self.stop()
 
 
-class NavigationAPI(SubAPI):
+class NavigationAPI(PartialAPI):
     """
     control mapping, tracking, driving, etc
 
@@ -399,8 +416,8 @@ class NavigationAPI(SubAPI):
             return await self._post('drive/path', dict(Path=self._format_coords(*coords)))
 
 
-class SkillAPI(SubAPI):
-    """interact with skills available on misty"""
+class SkillAPI(PartialAPI):
+    """interact with on-robot skills available on misty"""
 
     async def stop(self, skill_name: Optional[str] = None):
         await self._post('skills/cancel', json_obj.from_not_none(Skill=skill_name))
@@ -430,13 +447,12 @@ class SkillAPI(SubAPI):
 
 # ======================================================================================================================
 
-
 class MistyAPI(RestAPI):
     _pool = ThreadPoolExecutor(16)
 
     def __init__(self, ip):
         self.ip = ip
-        self.ws = MistyWS(ip)
+        self.ws = MistyWS(self)
 
         # ==================================================================================================================
         # APIs
@@ -449,6 +465,12 @@ class MistyAPI(RestAPI):
         self.system = SystemAPI(self)
         self.navigation = NavigationAPI(self)
         self.skills = SkillAPI(self)
+
+        # ==================================================================================================================
+        # SUBSCRIPTION DATA - store most recent subscription info here
+        # ==================================================================================================================
+
+        self.subscription_data: Dict[Sub, SubData] = dict.fromkeys(Sub, SubData(arrow.Arrow.min, json_obj(), None))
 
     # ==================================================================================================================
     # REST CALLS
@@ -471,7 +493,7 @@ class MistyAPI(RestAPI):
         return await self._request('GET', endpoint, **params)
 
     async def _get_j(self, endpoint, **params) -> Dict:
-        return await self._get(endpoint, **params).json()['result']
+        return (await self._get(endpoint, **params)).json()['result']
 
     async def _post(self, endpoint, json: Optional[dict] = None, **params):
         return await self._request('POST', endpoint, **params, json=json)
