@@ -77,11 +77,8 @@ class ImageAPI(PartialAPI):
         if as_byte_array:
             raise ValueError('uploading `as_byte_array` is not currently supported')
 
-        payload = dict(FileName=file_name, ImmediatelyApply=apply_immediately, OverwriteExisting=overwrite)
-        if width:
-            payload['Width'] = width
-        if height:
-            payload['Height'] = height
+        payload = json_obj(FileName=file_name, ImmediatelyApply=apply_immediately, OverwriteExisting=overwrite)
+        payload.add_if_not_none(Width=width, Height=height)
 
         await self._post('images', payload)
 
