@@ -11,17 +11,6 @@ import requests
 from misty_ws import MistyWS, Sub, SubInfo, SubData
 from utils import *
 
-# TODO:
-# x Asset
-# x Backpack
-# x Event
-# x Expression
-# x Movement
-# x Navigation
-# x Perception
-# Skill Management
-# x System
-
 WIDTH = 480
 HEIGHT = 272
 NAME = 'co-pi-lette'
@@ -35,8 +24,9 @@ class PartialAPI(RestAPI):
     """
     represent part of the overall api
 
-    helps break down methods into logical groups such as face, image, audio, etc
+    separate out methods into logical groups such as face, image, audio, etc
     """
+
     def __init__(self, api: MistyAPI):
         self._api = api
 
@@ -54,7 +44,7 @@ class PartialAPI(RestAPI):
 
 
 # ======================================================================================================================
-# SubAPIs
+# PartialAPIs
 # ======================================================================================================================
 
 class ImageAPI(PartialAPI):
@@ -211,9 +201,8 @@ class FaceAPI(PartialAPI):
         """stop finding/detecting faces in misty's line of vision"""
         await self._post('faces/detection/stop')
 
-    async def _process_face_message(self, msg: json_obj, sub_info: SubInfo):
-        print(msg)
-        print(sub_info)
+    async def _process_face_message(self, sub_data: SubData):
+        print(sub_data)
 
     async def start_training(self):
         """
@@ -234,6 +223,7 @@ class FaceAPI(PartialAPI):
         await self._get('faces/training/cancel')
 
     async def start_recognition(self):
+        """start attempting to recognize faces"""
         await self._post('faces/recognition/start')
 
     async def stop_recognition(self):
@@ -242,7 +232,7 @@ class FaceAPI(PartialAPI):
 
 
 class MovementAPI(PartialAPI):
-    """specifically control driving movement, head, arms, etc"""
+    """specifically control head, arms, driving movement, etc"""
 
     @staticmethod
     def _validate_vel_pct(**vel_pcts):
@@ -420,7 +410,7 @@ class SkillAPI(PartialAPI):
         await self._post('skills/cancel', json_obj.from_not_none(Skill=skill_name))
 
     async def delete(self, skill_uid: str):
-        await self._delete(Skill=skill_uid)
+        await self._delete('skills', Skill=skill_uid)
 
     async def get_running(self):
         return [Skill.from_misty(s) for s in await self._get_j('skills/running')]

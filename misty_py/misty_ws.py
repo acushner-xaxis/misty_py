@@ -126,28 +126,3 @@ class MistyWS(metaclass=Singleton):
             sd = self.api.subscription_data[sub_info.type] = SubData.from_data(o, sub_info)
             await handler(sd)
 
-# class _Subscriptions:
-#     _count = count(1)
-#
-#     def __init__(self):
-#         self._event_name_to_si: Dict[str, SubInfo] = {}
-#         self._type_to_sis: Dict[Sub, Set[SubInfo]] = defaultdict(set)
-#
-#     def subscribe(self, sub: Sub, handler: handler_type) -> SubInfo:
-#         si = SubInfo(self._next_sub_id(), sub, handler)
-#         self._event_name_to_si[si.event_name] = si
-#         self._type_to_sis[si.type].add(si)
-#         return si
-#
-#     def unsubscribe(self, sub_info: SubInfo) -> bool:
-#         """return True if should unsubscribe from feed"""
-#         del self._event_name_to_si[sub_info.event_name]
-#         event_type_subs = self._type_to_sis[sub_info.type]
-#         event_type_subs.remove(sub_info)
-#         return not event_type_subs
-#
-#     async def handle(self, sub: Sub, msg: json_obj):
-#         await asyncio.gather(*(si.handler(msg) for si in self._type_to_sis[sub]))
-#
-#     def _next_sub_id(self) -> int:
-#         return next(self._count)
