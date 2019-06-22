@@ -8,8 +8,8 @@ from typing import Dict, List, Any, Optional, Set
 import arrow
 import requests
 
-from misty_ws import MistyWS, Sub, SubInfo, SubData
-from utils import *
+from .misty_ws import MistyWS, Sub, SubInfo, SubData
+from .utils import *
 
 WIDTH = 480
 HEIGHT = 272
@@ -53,14 +53,17 @@ class ImageAPI(PartialAPI):
         # TODO: add back in once we have misty
         # self.saved_images = asyncio.run(self.list())
 
-    async def get(self, file_name: str, as_base64: bool = True) -> Image:
-        # TODO:  test with as_base64 set to both True and False
-        return Image.from_misty(await self._get_j('images', FileName=file_name, Base64=as_base64))
-
     async def list(self) -> Dict[str, Image]:
+        return await self._get_j('images/list')
         images = (Image.from_misty(i) for i in await self._get_j('images/list'))
         self.saved_images = {i.name: i for i in images}
         return self.saved_images
+
+    async def get(self, file_name: str, as_base64: bool = True) -> Image:
+        # TODO:  test with as_base64 set to both True and False
+        cor = self._get_j if as_base64 else self._get
+        return await cor('images', FileName=file_name, Base64=as_base64)
+        return Image.from_misty(await self._get_j('images', FileName=file_name, Base64=as_base64))
 
     async def upload(self, file_name: str, as_byte_array: bool = False, width: Optional[int] = None,
                      height: Optional[int] = None, apply_immediately: bool = False, overwrite: bool = True):
@@ -129,6 +132,7 @@ class AudioAPI(PartialAPI):
         return await self._get_j('audio', FileName=file_name)
 
     async def list(self) -> Dict[str, Audio]:
+        return await self._get_j('audio/list')
         audio = (Audio.from_misty(a) for a in await self._get_j('audio/list'))
         self.saved_audio = {a.name: a for a in audio}
         return self.saved_audio
@@ -238,41 +242,56 @@ class MovementAPI(PartialAPI):
     def _validate_vel_pct(**vel_pcts):
         fails = {}
         for name, val in vel_pcts.items():
-            if not -100 <= val <= 100:
+            if val is not None and not -100 <= val <= 100:
                 fails[name] = val
         if fails:
-            raise ValueError(f'invalid value for vel_pct: {fails}, must be in range [-100, 100]')
+            raise ValueError(f'invalid value for vel_pct: {fails}, must be in range [-100, 100] or `None`')
 
-    async def drive(self, linear_vel_pct: int, angular_vel_pct: int):
-        return await self.drive_time(linear_vel_pct, angular_vel_pct)
-
-    async def drive_time(self, linear_vel_pct: int, angular_vel_pct: int, time_ms: Optional[int] = None):
+    async def drive(self, linear_vel_pct: int, angular_vel_pct: int, time_ms: Optional[int] = None):
         """
         angular_vel_pct: -100 is full speed clockwise, 100 is full speed counter-clockwise
         """
         self._validate_vel_pct(linear_vel_pct=linear_vel_pct, angular_vel_pct=angular_vel_pct)
-        payload = dict(LinearVelocity=linear_vel_pct, AngularVelocity=angular_vel_pct)
+        payload = json_obj.from_not_none(LinearVelocity=linear_vel_pct, AngularVelocity=angular_vel_pct)
         endpoint = 'drive'
 
         if time_ms:
             payload['TimeMS'] = time_ms
             endpoint += '/time'
 
-        await self._post(endpoint, payload)
+        return await self._post(endpoint, payload)
 
     async def drive_track(self, left_track_vel_pct: float = 0.0, right_track_vel_pct: float = 0.0):
         """control drive tracks individually"""
         self._validate_vel_pct(left_track_vel_pct=left_track_vel_pct, right_track_vel_pct=right_track_vel_pct)
-        await self._post('drive/track', dict(LeftTrackSpeed=left_track_vel_pct, RightTrackSpeed=right_track_vel_pct))
+        return await self._post('drive/track',
+                                dict(LeftTrackSpeed=left_track_vel_pct, RightTrackSpeed=right_track_vel_pct))
 
     async def move_arms(self, *arm_settings: ArmSettings):
         """pass either/both left and right arm settings"""
         payload = {k: v for arm in arm_settings for k, v in arm.json.items()}
         if payload:
-            await self._post('arms/set', payload)
+            return await self._post('arms/set', payload)
 
-    async def move_head(self, settings: HeadSettings):
-        await self._post('head', settings.json)
+    async def move_arms(self, l_position: Optional[float] = None, l_velocity: Optional[float] = None,
+                        r_position: Optional[float] = None, r_velocity: Optional[float] = None):
+        """pass either/both left and right arm settings"""
+        arm_settings = [ArmSettings('left', l_position, l_velocity),
+                        ArmSettings('right', r_position, r_velocity)]
+        payload = {k: v for arm in arm_settings for k, v in arm.json.items()}
+        if payload:
+            return await self._post('arms/set', payload)
+
+    async def move_head(self, pitch: Optional[float] = None, roll: Optional[float] = None, yaw: Optional[float] = None):
+        """
+        all vals in range [-100, 100]
+
+        pitch: up and down
+        roll: tilt (ear to shoulder)
+        yaw: turn left and right
+        velocity: how quickly
+        """
+        return await self._post('head', HeadSettings(pitch, roll, yaw, 1).json)
 
     async def stop(self, *, everything=False):
         """
@@ -282,11 +301,11 @@ class MovementAPI(PartialAPI):
         """
         if everything:
             return await self.halt()
-        await self._post('drive/stop')
+        return await self._post('drive/stop')
 
     async def halt(self):
         """stop everything"""
-        await self._post('robot/halt')
+        return await self._post('robot/halt')
 
 
 class SystemAPI(PartialAPI):
@@ -297,10 +316,11 @@ class SystemAPI(PartialAPI):
     """
 
     async def clear_error_msg(self):
-        await self._post('text/clear')
+        return await self._post('text/clear')
 
     @property
     async def networks(self) -> List[Wifi]:
+        return await self._get_j('networks')
         return [Wifi.from_misty(o) for o in await self._get_j('networks')]
 
     @property
@@ -324,11 +344,11 @@ class SystemAPI(PartialAPI):
 
     async def set_wifi_network(self, name, password):
         payload = dict(NetworkName=name, Password=password)
-        await self._post('network', payload)
+        return await self._post('network', payload)
 
     async def send_to_backpack(self, msg: str):
         """not sure what kind of data/msg we can send - perhaps Base64 encode to send binary data?"""
-        await self._post('serial', dict(Message=msg))
+        return await self._post('serial', dict(Message=msg))
 
 
 class _SlamHelper(PartialAPI):
@@ -413,6 +433,7 @@ class SkillAPI(PartialAPI):
         await self._delete('skills', Skill=skill_uid)
 
     async def get_running(self):
+        return await self._get_j('skills/running')
         return [Skill.from_misty(s) for s in await self._get_j('skills/running')]
 
     async def get(self):
@@ -463,7 +484,7 @@ class MistyAPI(RestAPI):
     # REST CALLS
     # ==================================================================================================================
     def _endpoint(self, endpoint, **params) -> str:
-        res = f'http://{self.ip}/api/{endpoint}'
+        res = f'{self.ip}/api/{endpoint}'
 
         if params:
             param_str = '&'.join(f'{k}={v}' for k, v in params.items())

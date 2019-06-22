@@ -3,9 +3,12 @@ import asyncio
 import arrow
 import uvloop
 
-from api import MistyAPI
-from misty_ws import MistyWS, Sub, SubInfo, SubData
-from utils import json_obj, RGB
+from misty_py.api import MistyAPI
+from misty_py.misty_ws import MistyWS, Sub, SubInfo, SubData
+from misty_py.utils import json_obj, RGB, HeadSettings
+
+print(HeadSettings(yaw=40).json)
+sys.exit
 
 api = MistyAPI('localhost:9999')
 

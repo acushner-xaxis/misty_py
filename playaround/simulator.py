@@ -4,9 +4,9 @@ from functools import partial, wraps
 import arrow
 import websockets
 
-import msgs
-from misty_ws import Sub
-from utils import json_obj
+import playaround.msgs as msgs
+from misty_py.misty_ws import Sub
+from misty_py.utils import json_obj
 
 loop = asyncio.get_event_loop()
 

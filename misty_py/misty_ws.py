@@ -8,8 +8,8 @@ from typing import Callable, Awaitable, Dict, NamedTuple
 import arrow
 import websockets
 
-from utils import json_obj
-from utils.datastructures import Singleton
+from .utils import json_obj
+from .utils.datastructures import Singleton
 
 __author__ = 'acushner'
 
@@ -88,7 +88,7 @@ class MistyWS(metaclass=Singleton):
     _count = count(1)
 
     def __init__(self, misty_api):
-        from api import MistyAPI
+        from .api import MistyAPI
         self.api: MistyAPI = misty_api
         self._endpoint = f'ws://{self.api.ip}/pubsub'
         self._tasks: Dict[SubInfo, TaskInfo] = {}

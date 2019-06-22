@@ -3,6 +3,9 @@ import json
 from abc import abstractmethod, ABC
 from enum import IntFlag
 from typing import NamedTuple, Dict, Optional
+from PIL import Image as PImage
+from base64 import b64decode
+from io import BytesIO
 
 __all__ = ('SlamStatus', 'Coords', 'Wifi', 'Skill', 'Image', 'Audio', 'Singleton',
            'ArmSettings', 'HeadSettings', 'json_obj', 'RestAPI')
@@ -52,7 +55,7 @@ class Image(NamedTuple):
 
     @classmethod
     def from_misty(cls, d):
-        return cls(d['Name'], d['Width'], d['Height'], d.get('userAddedAsset'))
+        return cls(d['name'], d['width'], d['height'], d.get('systemAsset'))
 
 
 class Audio(NamedTuple):
@@ -64,39 +67,44 @@ class Audio(NamedTuple):
         return cls(d['Name'], d.get('userAddedAsset'))
 
 
+def _denormalize(obj) -> Dict[str, float]:
+    attrs = ((k, v) for k, v in obj._var_range.items() if getattr(obj, k) is not None)
+    return dict((k, getattr(obj, k) / 100 * v) for k, v in attrs)
+
+
 class ArmSettings(NamedTuple):
     side: str  # left | right
     position: float  # [-5, 5]
     velocity: float = 100  # [0, 100]
 
-    def validate(self):
-        errors = []
-        if self.side.lower() not in ('left', 'right'):
-            errors.append(f'invalid side {self.side!r}, must be either "left" or "right"')
-        if not -5 <= self.position <= 5:
-            errors.append(f'invalid position {self.position}, must be in [-5, 5]')
-        if not 0 <= self.velocity <= 100:
-            errors.append(f'invalid velocity {self.velocity}, must be in [0, 100]')
-
-        if errors:
-            raise ValueError('\n'.join(errors))
+    _var_range = dict(position=-100, velocity=100)
 
     @property
     def json(self) -> Dict[str, float]:
-        self.validate()
         side = self.side.lower()
-        return {f'{side}ArmPosition': self.position + 5, f'{side}ArmVelocity': self.velocity}
+        return {f'{side}Arm{k.capitalize()}': v for k, v in _denormalize(self).items()}
 
 
 class HeadSettings(NamedTuple):
-    pitch: Optional[float] = None  # up and down [-5, 5]
-    roll: Optional[float] = None  # tilt (ear to shoulder) [-5, 5]
-    yaw: Optional[float] = None  # turn left and right [-5, 5]
-    velocity: Optional[float] = None  # [0, 10]
+    """
+    all vals in range [-100, 100]
+
+    pitch: up and down
+    roll: tilt (ear to shoulder)
+    yaw: turn left and right
+    velocity: how quickly
+    """
+    pitch: Optional[float] = None
+    roll: Optional[float] = None
+    yaw: Optional[float] = None
+    velocity: Optional[float] = None
+
+    _var_range = dict(pitch=-10, roll=50, yaw=-100, velocity=10)
+
 
     @property
     def json(self) -> Dict[str, float]:
-        return {k.capitalize(): v for k, v in self._asdict().items() if v is not None}
+        return {k.capitalize(): v for k, v in _denormalize(self).items() if v is not None}
 
 
 # ======================================================================================================================
@@ -110,6 +118,7 @@ class json_obj(dict):
     def from_not_none(cls, **key_value_pairs):
         res = cls()
         res.add_if_not_none(**key_value_pairs)
+        return res
 
     def _add(self, _if_not_none=False, **key_value_pairs):
         for k, v in key_value_pairs.items():
@@ -153,7 +162,7 @@ class RestAPI(ABC):
         """REST GET"""
 
     @abstractmethod
-    def _get_j(self, endpoint, **params) -> Dict:
+    def _get_j(self, endpoint, **params) -> json_obj:
         """REST GET - return as dict"""
 
     @abstractmethod
@@ -188,3 +197,10 @@ class Singleton(type):
         except KeyError:
             res = cls._cache[args] = super().__call__(*args)
         return res
+
+
+def decode_img(img_b64, display_image=True):
+    res = b64decode(img_b64[img_b64.index(',') + 1:])
+    if display_image:
+        PImage.open(BytesIO(res))
+    return res

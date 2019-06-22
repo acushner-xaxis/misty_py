@@ -1,4 +1,4 @@
-from utils import json_obj
+from misty_py.utils import json_obj
 
 SelfState = json_obj(**{
     "eventName": "SelfState",

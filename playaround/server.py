@@ -7,7 +7,7 @@ import arrow
 import websockets
 import uvloop
 
-from utils import json_obj
+from misty_py.utils import json_obj
 
 uvloop.install()
 

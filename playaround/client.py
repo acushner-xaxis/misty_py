@@ -5,7 +5,7 @@ import arrow
 
 import websockets
 
-from utils import json_obj
+from misty_py.utils import json_obj
 
 pool = ThreadPoolExecutor(8)
 
