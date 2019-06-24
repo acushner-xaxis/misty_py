@@ -2,13 +2,14 @@ import asyncio
 import json
 from abc import abstractmethod, ABC
 from enum import IntFlag
-from typing import NamedTuple, Dict, Optional
+from typing import NamedTuple, Dict, Optional, Any, Union, List
+from collections import ChainMap
 from PIL import Image as PImage
 from base64 import b64decode
 from io import BytesIO
 
-__all__ = ('SlamStatus', 'Coords', 'Wifi', 'Skill', 'Image', 'Audio', 'Singleton',
-           'ArmSettings', 'HeadSettings', 'json_obj', 'RestAPI')
+__all__ = ('SlamStatus', 'Coords', 'Wifi', 'Skill', 'Image', 'Audio', 'Singleton', 'ArmSettings', 'HeadSettings',
+           'json_obj', 'RestAPI', 'JSONObjOrObjs', 'decode_img')
 
 
 class SlamStatus(IntFlag):
@@ -101,7 +102,6 @@ class HeadSettings(NamedTuple):
 
     _var_range = dict(pitch=-10, roll=50, yaw=-100, velocity=10)
 
-
     @property
     def json(self) -> Dict[str, float]:
         return {k.capitalize(): v for k, v in _denormalize(self).items() if v is not None}
@@ -109,10 +109,26 @@ class HeadSettings(NamedTuple):
 
 # ======================================================================================================================
 
+identity = lambda x: x
+
+
 class json_obj(dict):
-    def __init__(self, **kwargs):
-        super().__init__()
-        self._add(**kwargs)
+    def __new__(cls, dict_or_list: Optional[Union[dict, list]] = None, **kwargs):
+        if isinstance(dict_or_list, list):
+            if kwargs:
+                raise ValueError('cannot pass list with keyword args')
+            return [(json_obj if isinstance(e, (dict, list)) else identity)(e) for e in dict_or_list]
+
+        new_dict = kwargs
+        if isinstance(dict_or_list, dict):
+            new_dict = ChainMap(kwargs, dict_or_list)
+        elif dict_or_list is not None:
+            # try process as an iterable of tuples, a la regular dict creation
+            new_dict = {k: v for (k, v) in dict_or_list}
+
+        res = super().__new__(cls)
+        res._add(**new_dict)
+        return res
 
     @classmethod
     def from_not_none(cls, **key_value_pairs):
@@ -120,16 +136,24 @@ class json_obj(dict):
         res.add_if_not_none(**key_value_pairs)
         return res
 
-    def _add(self, _if_not_none=False, **key_value_pairs):
-        for k, v in key_value_pairs.items():
-            if not _if_not_none or v is not None:
-                if isinstance(v, dict):
-                    self[k] = json_obj(**v)
-                else:
-                    self[k] = v
+    @property
+    def json_str(self) -> str:
+        return json.dumps(self)
+
+    @classmethod
+    def from_str(cls, s: str):
+        return cls(**json.loads(s))
 
     def add_if_not_none(self, **key_value_pairs):
         self._add(_if_not_none=True, **key_value_pairs)
+
+    def _add(self, _if_not_none=False, **key_value_pairs):
+        for k, v in key_value_pairs.items():
+            if not _if_not_none or v is not None:
+                if isinstance(v, (list, dict)):
+                    self[k] = json_obj(v)
+                else:
+                    self[k] = v
 
     def __setattr__(self, key, value):
         d = {key: value}
@@ -141,13 +165,14 @@ class json_obj(dict):
     def __delattr__(self, key):
         del self[key]
 
-    @property
-    def json_str(self) -> str:
-        return json.dumps(self)
-
-    @classmethod
-    def from_str(cls, s: str):
-        return cls(**json.loads(s))
+    @staticmethod
+    def _to_str_helper(d, strs):
+        for k, v in d.items():
+            if isinstance(v, list):
+                strs.append(f'{k}={[str(e) for e in v]}')
+            else:
+                strs.append(f'{k}={v!r}')
+        return strs
 
     def __str__(self):
         strs = (f'{k}={v!r}' for k, v in self.items())
@@ -156,13 +181,16 @@ class json_obj(dict):
     __repr__ = __str__
 
 
+JSONObjOrObjs = Union[json_obj, List[json_obj]]
+
+
 class RestAPI(ABC):
     @abstractmethod
     def _get(self, endpoint, **params):
         """REST GET"""
 
     @abstractmethod
-    def _get_j(self, endpoint, **params) -> json_obj:
+    def _get_j(self, endpoint, **params) -> JSONObjOrObjs:
         """REST GET - return as dict"""
 
     @abstractmethod

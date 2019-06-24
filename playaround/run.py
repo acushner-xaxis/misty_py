@@ -7,6 +7,15 @@ from misty_py.api import MistyAPI
 from misty_py.misty_ws import MistyWS, Sub, SubInfo, SubData
 from misty_py.utils import json_obj, RGB, HeadSettings
 
+# print(json_obj(dict(a=4)))
+t = json_obj([dict(a=4, b=[dict(ab=84, hm=53)]), dict(b=5, c=67)])
+t = json_obj([dict(a=4, b=[8, 7, [12, dict(ahoe=234)]]), dict(b=5, c=67)])
+t = t
+print(t)
+# print(json_obj())
+# print(json_obj(dict(a=5), b=6))
+# print(json_obj([4, 5]))
+
 print(HeadSettings(yaw=40).json)
 sys.exit
 

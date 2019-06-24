@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
-from typing import Dict, List, Any, Optional, Set
+from typing import Dict, List, Any, Optional, Set, Union
 
 import arrow
 import requests
@@ -14,7 +14,6 @@ from .utils import *
 WIDTH = 480
 HEIGHT = 272
 NAME = 'co-pi-lette'
-
 
 # ======================================================================================================================
 # ======================================================================================================================
@@ -33,7 +32,7 @@ class PartialAPI(RestAPI):
     async def _get(self, endpoint, **params):
         return await self._api._get(endpoint, **params)
 
-    async def _get_j(self, endpoint, **params) -> Dict:
+    async def _get_j(self, endpoint, **params) -> JSONObjOrObjs:
         return await self._api._get_j(endpoint, **params)
 
     async def _post(self, endpoint, json: Optional[dict] = None, **params):
@@ -54,8 +53,7 @@ class ImageAPI(PartialAPI):
         # self.saved_images = asyncio.run(self.list())
 
     async def list(self) -> Dict[str, Image]:
-        return await self._get_j('images/list')
-        images = (Image.from_misty(i) for i in await self._get_j('images/list'))
+        images = await self._get_j('images/list')
         self.saved_images = {i.name: i for i in images}
         return self.saved_images
 
@@ -63,7 +61,6 @@ class ImageAPI(PartialAPI):
         # TODO:  test with as_base64 set to both True and False
         cor = self._get_j if as_base64 else self._get
         return await cor('images', FileName=file_name, Base64=as_base64)
-        return Image.from_misty(await self._get_j('images', FileName=file_name, Base64=as_base64))
 
     async def upload(self, file_name: str, as_byte_array: bool = False, width: Optional[int] = None,
                      height: Optional[int] = None, apply_immediately: bool = False, overwrite: bool = True):
@@ -73,18 +70,18 @@ class ImageAPI(PartialAPI):
         payload = json_obj(FileName=file_name, ImmediatelyApply=apply_immediately, OverwriteExisting=overwrite)
         payload.add_if_not_none(Width=width, Height=height)
 
-        await self._post('images', payload)
+        return await self._post('images', payload)
 
-    async def display(self, file_name: str, time_out_secs: float, alpha: float):
+    async def display(self, file_name: str, time_out_secs: float, alpha: float = 0.0):
         # TODO: validate image exists - upload if not?
-        await self._post('images/display', dict(FileName=file_name, TimeOutSeconds=time_out_secs, Alpha=alpha))
+        return await self._post('images/display', dict(FileName=file_name, TimeOutSeconds=time_out_secs, Alpha=alpha))
 
     async def set_led(self, rgb: RGB):
         rgb.validate()
-        await self._post('led', rgb.json)
+        return await self._post('led', rgb.json)
 
     async def delete(self, file_name: str):
-        await self._delete('images', dict(FileName=file_name))
+        return await self._delete('images', dict(FileName=file_name))
 
     @staticmethod
     def _validate_take_picture(file_name, width, height, show_on_screen):
@@ -110,10 +107,10 @@ class ImageAPI(PartialAPI):
         - records up to 10 seconds
         - can only store one recording at a time
         """
-        await self._post('video/record/start')
+        return await self._post('video/record/start')
 
     async def stop_recording_video(self):
-        await self._post('video/record/stop')
+        return await self._post('video/record/stop')
 
     async def get_recorded_video(self):
         return await self._get_j('video')
@@ -132,8 +129,7 @@ class AudioAPI(PartialAPI):
         return await self._get_j('audio', FileName=file_name)
 
     async def list(self) -> Dict[str, Audio]:
-        return await self._get_j('audio/list')
-        audio = (Audio.from_misty(a) for a in await self._get_j('audio/list'))
+        audio = await self._get_j('audio/list')
         self.saved_audio = {a.name: a for a in audio}
         return self.saved_audio
 
@@ -319,9 +315,9 @@ class SystemAPI(PartialAPI):
         return await self._post('text/clear')
 
     @property
-    async def networks(self) -> List[Wifi]:
+    async def networks(self):
         return await self._get_j('networks')
-        return [Wifi.from_misty(o) for o in await self._get_j('networks')]
+        # return [Wifi.from_misty(o) for o in await self._get_j('networks')]
 
     @property
     async def battery(self):
@@ -434,7 +430,7 @@ class SkillAPI(PartialAPI):
 
     async def get_running(self):
         return await self._get_j('skills/running')
-        return [Skill.from_misty(s) for s in await self._get_j('skills/running')]
+        # return [Skill.from_misty(s) for s in await self._get_j('skills/running')]
 
     async def get(self):
         return await self._get_j('skills')
@@ -500,8 +496,8 @@ class MistyAPI(RestAPI):
     async def _get(self, endpoint, **params):
         return await self._request('GET', endpoint, **params)
 
-    async def _get_j(self, endpoint, **params) -> Dict:
-        return (await self._get(endpoint, **params)).json()['result']
+    async def _get_j(self, endpoint, **params) -> JSONObjOrObjs:
+        return json_obj((await self._get(endpoint, **params)).json()['result'])
 
     async def _post(self, endpoint, json: Optional[dict] = None, **params):
         return await self._request('POST', endpoint, **params, json=json)

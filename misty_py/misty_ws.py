@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from asyncio import create_task
 from enum import Enum
 from itertools import count
 from typing import Callable, Awaitable, Dict, NamedTuple
@@ -58,7 +59,7 @@ class SubInfo(NamedTuple):
     """identifying information about a particular subscription"""
     id: int
     type: Sub
-    handler: handler_type
+    handler: HandlerType
 
     @property
     def event_name(self) -> str:
@@ -81,7 +82,7 @@ class TaskInfo(NamedTuple):
     ws: websockets.WebSocketClientProtocol
 
 
-handler_type = Callable[[SubData], Awaitable[None]]
+HandlerType = Callable[[SubData], Awaitable[None]]
 
 
 class MistyWS(metaclass=Singleton):
@@ -90,18 +91,25 @@ class MistyWS(metaclass=Singleton):
     def __init__(self, misty_api):
         from .api import MistyAPI
         self.api: MistyAPI = misty_api
-        self._endpoint = f'ws://{self.api.ip}/pubsub'
+        self._endpoint = self._init_endpoint(self.api.ip)
         self._tasks: Dict[SubInfo, TaskInfo] = {}
+
+    @staticmethod
+    def _init_endpoint(url):
+        res = f'{url.replace("http", 1)}/pubsub'
+        print(res)
+        return res
 
     def _next_sub_id(self) -> int:
         return next(self._count)
 
-    async def subscribe(self, sub: Sub, handler: handler_type, debounce_ms: int = 250) -> SubInfo:
+    async def subscribe(self, sub: Sub, handler: HandlerType, debounce_ms: int = 250) -> SubInfo:
         sub_info = SubInfo(self._next_sub_id(), sub, handler)
         payload = json_obj(Operation='subscribe', Type=sub.value, DebounceMS=debounce_ms, EventName=sub_info.event_name)
 
         ws = await websockets.connect(self._endpoint)
         self._tasks[sub_info] = TaskInfo(asyncio.create_task(self._handle(ws, handler, sub_info)), ws)
+        print(sub_info)
         await ws.send(payload.json_str)
 
         return sub_info
@@ -120,9 +128,8 @@ class MistyWS(metaclass=Singleton):
         await ti.ws.close()
         return True
 
-    async def _handle(self, ws, handler: handler_type, sub_info):
+    async def _handle(self, ws, handler: HandlerType, sub_info):
         async for msg in ws:
             o = json_obj.from_str(msg)
             sd = self.api.subscription_data[sub_info.type] = SubData.from_data(o, sub_info)
-            await handler(sd)
-
+            create_task(handler(sd))
