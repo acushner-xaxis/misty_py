@@ -8,8 +8,9 @@ from misty_py.misty_ws import MistyWS, Sub, SubInfo, SubData
 from misty_py.utils import json_obj, RGB, HeadSettings
 
 # print(json_obj(dict(a=4)))
-t = json_obj([dict(a=4, b=[dict(ab=84, hm=53)]), dict(b=5, c=67)])
-t = json_obj([dict(a=4, b=[8, 7, [12, dict(ahoe=234)]]), dict(b=5, c=67)])
+# t = json_obj([dict(a=4, b=[dict(ab=84, hm=53)]), dict(b=5, c=67)])
+t = json_obj([dict(a=4, b=[8, 7, [12, dict(ahoe=234)]]), dict(b=5, c=67, e=dict(a=5))])
+# t = json_obj(dict(a=dict(b=4)))
 t = t
 print(t)
 # print(json_obj())

@@ -130,6 +130,9 @@ class json_obj(dict):
         res._add(**new_dict)
         return res
 
+    def __init__(self, _=None, **__):
+        """need to supress dict's default init, otherwise subdictionaries won't appear as json_obj types"""
+
     @classmethod
     def from_not_none(cls, **key_value_pairs):
         res = cls()
@@ -156,8 +159,7 @@ class json_obj(dict):
                     self[k] = v
 
     def __setattr__(self, key, value):
-        d = {key: value}
-        self._add(**d)
+        self._add(**{key: value})
 
     def __getattr__(self, key):
         return self[key]

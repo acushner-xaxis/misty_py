@@ -96,7 +96,7 @@ class MistyWS(metaclass=Singleton):
 
     @staticmethod
     def _init_endpoint(url):
-        res = f'{url.replace("http", 1)}/pubsub'
+        res = f'{url.replace("http", "ws", 1)}/pubsub'
         print(res)
         return res
 
