@@ -167,15 +167,6 @@ class json_obj(dict):
     def __delattr__(self, key):
         del self[key]
 
-    @staticmethod
-    def _to_str_helper(d, strs):
-        for k, v in d.items():
-            if isinstance(v, list):
-                strs.append(f'{k}={[str(e) for e in v]}')
-            else:
-                strs.append(f'{k}={v!r}')
-        return strs
-
     def __str__(self):
         strs = (f'{k}={v!r}' for k, v in self.items())
         return f'json_obj({", ".join(strs)})'
