@@ -8,7 +8,7 @@ from typing import Dict, List, Any, Optional, Set, Union
 import arrow
 import requests
 
-from .misty_ws import MistyWS, Sub, SubInfo, SubData
+from .misty_ws import MistyWS, Sub, SubData
 from .utils import *
 
 WIDTH = 480
@@ -52,12 +52,12 @@ class ImageAPI(PartialAPI):
         # TODO: add back in once we have misty
         # self.saved_images = asyncio.run(self.list())
 
-    async def list(self) -> Dict[str, Image]:
+    async def list(self) -> Dict[str, json_obj]:
         images = await self._get_j('images/list')
         self.saved_images = {i.name: i for i in images}
         return self.saved_images
 
-    async def get(self, file_name: str, as_base64: bool = True) -> Image:
+    async def get(self, file_name: str, as_base64: bool = True):
         # TODO:  test with as_base64 set to both True and False
         cor = self._get_j if as_base64 else self._get
         return await cor('images', FileName=file_name, Base64=as_base64)
@@ -128,7 +128,7 @@ class AudioAPI(PartialAPI):
         # TODO: what the hell do we get back?
         return await self._get_j('audio', FileName=file_name)
 
-    async def list(self) -> Dict[str, Audio]:
+    async def list(self) -> Dict[str, json_obj]:
         audio = await self._get_j('audio/list')
         self.saved_audio = {a.name: a for a in audio}
         return self.saved_audio
@@ -406,7 +406,7 @@ class NavigationAPI(PartialAPI):
 
     @staticmethod
     def _format_coords(*coords: Coords):
-        return ','.join(f'{c.x}:{c.y}' for c in coords)
+        return ','.join(map(str, coords))
 
     async def drive_to_coordinates(self, coords: Coords):
         async with self.slam_tracking:
@@ -430,7 +430,6 @@ class SkillAPI(PartialAPI):
 
     async def get_running(self):
         return await self._get_j('skills/running')
-        # return [Skill.from_misty(s) for s in await self._get_j('skills/running')]
 
     async def get(self):
         return await self._get_j('skills')

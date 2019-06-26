@@ -1,15 +1,14 @@
-import asyncio
 import json
 from abc import abstractmethod, ABC
 from enum import IntFlag
-from typing import NamedTuple, Dict, Optional, Any, Union, List
+from typing import NamedTuple, Dict, Optional, Union, List, Set, Any
 from collections import ChainMap
 from PIL import Image as PImage
 from base64 import b64decode
 from io import BytesIO
 
-__all__ = ('SlamStatus', 'Coords', 'Wifi', 'Skill', 'Image', 'Audio', 'Singleton', 'ArmSettings', 'HeadSettings',
-           'json_obj', 'RestAPI', 'JSONObjOrObjs', 'decode_img')
+__all__ = ('SlamStatus', 'Coords', 'Singleton', 'ArmSettings', 'HeadSettings', 'json_obj', 'RestAPI', 'JSONObjOrObjs',
+           'decode_img')
 
 
 class SlamStatus(IntFlag):
@@ -20,52 +19,12 @@ class SlamStatus(IntFlag):
     resetting = 16
 
 
-# ======================================================================================================================
-
 class Coords(NamedTuple):
     x: int
     y: int
 
-
-class Wifi(NamedTuple):
-    name: str
-    signal_strength: int
-    is_secure: bool
-
-    @classmethod
-    def from_misty(cls, d: Dict):
-        return cls(d['Name'], d['SignalStrength'], d['IsSecure'])
-
-
-class Skill(NamedTuple):
-    name: str
-    description: str
-    startup_args: Dict
-    uid: str
-
-    @classmethod
-    def from_misty(cls, d):
-        return cls(d['name'], d['description'], d['startupArguments'], d['uniqueId'])
-
-
-class Image(NamedTuple):
-    name: str
-    width: int
-    height: int
-    user_added: Optional[bool]
-
-    @classmethod
-    def from_misty(cls, d):
-        return cls(d['name'], d['width'], d['height'], d.get('systemAsset'))
-
-
-class Audio(NamedTuple):
-    name: str
-    user_added: bool
-
-    @classmethod
-    def from_misty(cls, d):
-        return cls(d['Name'], d.get('userAddedAsset'))
+    def __str__(self):
+        return f'{self.x}:{self.y}'
 
 
 def _denormalize(obj) -> Dict[str, float]:
@@ -74,9 +33,15 @@ def _denormalize(obj) -> Dict[str, float]:
 
 
 class ArmSettings(NamedTuple):
+    """
+    all vals in range [-100.0, 100.0]
+    will automatically denormalize to values accepted by misty
+
+    -100 = down, 100 = up
+    """
     side: str  # left | right
-    position: float  # [-5, 5]
-    velocity: float = 100  # [0, 100]
+    position: float
+    velocity: float = 100
 
     _var_range = dict(position=-100, velocity=100)
 
@@ -88,7 +53,8 @@ class ArmSettings(NamedTuple):
 
 class HeadSettings(NamedTuple):
     """
-    all vals in range [-100, 100]
+    all vals in range [-100.0, 100.0]
+    will automatically denormalize to values accepted by misty
 
     pitch: up and down
     roll: tilt (ear to shoulder)
@@ -123,7 +89,7 @@ class json_obj(dict):
         if isinstance(dict_or_list, dict):
             new_dict = ChainMap(kwargs, dict_or_list)
         elif dict_or_list is not None:
-            # try process as an iterable of tuples, a la regular dict creation
+            # try to process as an iterable of tuples, a la regular dict creation
             new_dict = {k: v for (k, v) in dict_or_list}
 
         res = super().__new__(cls)
@@ -139,13 +105,17 @@ class json_obj(dict):
         res.add_if_not_none(**key_value_pairs)
         return res
 
+    @classmethod
+    def from_str(cls, s: str):
+        return cls(json.loads(s))
+
     @property
     def json_str(self) -> str:
         return json.dumps(self)
 
-    @classmethod
-    def from_str(cls, s: str):
-        return cls(**json.loads(s))
+    @property
+    def pretty(self):
+        return json.dumps(self, indent=4, sort_keys=True)
 
     def add_if_not_none(self, **key_value_pairs):
         self._add(_if_not_none=True, **key_value_pairs)
@@ -160,6 +130,7 @@ class json_obj(dict):
 
     def __setattr__(self, key, value):
         self._add(**{key: value})
+        return value
 
     def __getattr__(self, key):
         return self[key]
@@ -167,14 +138,15 @@ class json_obj(dict):
     def __delattr__(self, key):
         del self[key]
 
-    @staticmethod
-    def _to_str_helper(d, strs):
-        for k, v in d.items():
-            if isinstance(v, list):
-                strs.append(f'{k}={[str(e) for e in v]}')
-            else:
-                strs.append(f'{k}={v!r}')
-        return strs
+    def __and__(self, other) -> Set[Any]:
+        return self.keys() & other.keys()
+
+    def __or__(self, other) -> Set[Any]:
+        return self.keys() | other.keys()
+
+    def __xor__(self, other) -> 'json_obj':
+        cm = ChainMap(self, other)
+        return type(self)((k, cm[k]) for k in self.keys() ^ other.keys())
 
     def __str__(self):
         strs = (f'{k}={v!r}' for k, v in self.items())
@@ -204,17 +176,6 @@ class RestAPI(ABC):
         """REST DELETE"""
 
 
-# class aobject:
-#     """enable async init of objects"""
-#     async def __new__(cls, *args, **kwargs):
-#         instance = super().__new__(cls)
-#         await instance.__init__(*args, **kwargs)
-#         return instance
-#
-#     async def __init__(self):
-#         pass
-
-
 class Singleton(type):
     def __new__(mcs, name, bases, body):
         cls = super().__new__(mcs, name, bases, body)
@@ -234,3 +195,13 @@ def decode_img(img_b64, display_image=True):
     if display_image:
         PImage.open(BytesIO(res))
     return res
+
+# class aobject:
+#     """enable async init of objects"""
+#     async def __new__(cls, *args, **kwargs):
+#         instance = super().__new__(cls)
+#         await instance.__init__(*args, **kwargs)
+#         return instance
+#
+#     async def __init__(self):
+#         pass
