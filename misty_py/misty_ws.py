@@ -10,7 +10,7 @@ import arrow
 import websockets
 
 from .utils import json_obj
-from .utils.datastructures import Singleton
+from .utils.datastructures import InstanceCache
 
 __author__ = 'acushner'
 
@@ -85,7 +85,7 @@ class TaskInfo(NamedTuple):
 HandlerType = Callable[[SubData], Awaitable[None]]
 
 
-class MistyWS(metaclass=Singleton):
+class MistyWS(metaclass=InstanceCache):
     _count = count(1)
 
     def __init__(self, misty_api):

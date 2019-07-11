@@ -7,7 +7,7 @@ from PIL import Image as PImage
 from base64 import b64decode
 from io import BytesIO
 
-__all__ = ('SlamStatus', 'Coords', 'Singleton', 'ArmSettings', 'HeadSettings', 'json_obj', 'RestAPI', 'JSONObjOrObjs',
+__all__ = ('SlamStatus', 'Coords', 'InstanceCache', 'ArmSettings', 'HeadSettings', 'json_obj', 'RestAPI', 'JSONObjOrObjs',
            'decode_img')
 
 
@@ -28,6 +28,7 @@ class Coords(NamedTuple):
 
 
 def _denormalize(obj) -> Dict[str, float]:
+    """this function is not in a base class due to NamedTuple's custom mro setup"""
     attrs = ((k, v) for k, v in obj._var_range.items() if getattr(obj, k) is not None)
     return dict((k, getattr(obj, k) / 100 * v) for k, v in attrs)
 
@@ -79,6 +80,7 @@ identity = lambda x: x
 
 
 class json_obj(dict):
+    """add `.` accessibility to dicts"""
     def __new__(cls, dict_or_list: Optional[Union[dict, list]] = None, **kwargs):
         if isinstance(dict_or_list, list):
             if kwargs:
@@ -101,6 +103,7 @@ class json_obj(dict):
 
     @classmethod
     def from_not_none(cls, **key_value_pairs):
+        """create new obj and add only items that aren't `None`"""
         res = cls()
         res.add_if_not_none(**key_value_pairs)
         return res
@@ -114,7 +117,7 @@ class json_obj(dict):
         return json.dumps(self)
 
     @property
-    def pretty(self):
+    def pretty(self) -> str:
         return json.dumps(self, indent=4, sort_keys=True)
 
     def add_if_not_none(self, **key_value_pairs):
@@ -176,7 +179,8 @@ class RestAPI(ABC):
         """REST DELETE"""
 
 
-class Singleton(type):
+class InstanceCache(type):
+    """create only one instance per args passed to class"""
     def __new__(mcs, name, bases, body):
         cls = super().__new__(mcs, name, bases, body)
         cls._cache = {}
