@@ -7,8 +7,9 @@ from PIL import Image as PImage
 from base64 import b64decode
 from io import BytesIO
 
-__all__ = ('SlamStatus', 'Coords', 'InstanceCache', 'ArmSettings', 'HeadSettings', 'json_obj', 'RestAPI', 'JSONObjOrObjs',
-           'decode_img')
+__all__ = (
+    'SlamStatus', 'Coords', 'InstanceCache', 'ArmSettings', 'HeadSettings', 'json_obj', 'RestAPI', 'JSONObjOrObjs',
+    'decode_img')
 
 
 class SlamStatus(IntFlag):
@@ -81,6 +82,7 @@ identity = lambda x: x
 
 class json_obj(dict):
     """add `.` accessibility to dicts"""
+
     def __new__(cls, dict_or_list: Optional[Union[dict, list]] = None, **kwargs):
         if isinstance(dict_or_list, list):
             if kwargs:
@@ -92,14 +94,14 @@ class json_obj(dict):
             new_dict = ChainMap(kwargs, dict_or_list)
         elif dict_or_list is not None:
             # try to process as an iterable of tuples, a la regular dict creation
-            new_dict = {k: v for (k, v) in dict_or_list}
+            new_dict = ChainMap(kwargs, {k: v for (k, v) in dict_or_list})
 
         res = super().__new__(cls)
         res._add(**new_dict)
         return res
 
     def __init__(self, _=None, **__):
-        """need to supress dict's default init, otherwise subdictionaries won't appear as json_obj types"""
+        """need to suppress dict's default init, otherwise subdictionaries won't appear as json_obj types"""
 
     @classmethod
     def from_not_none(cls, **key_value_pairs):
@@ -181,6 +183,7 @@ class RestAPI(ABC):
 
 class InstanceCache(type):
     """create only one instance per args passed to class"""
+
     def __new__(mcs, name, bases, body):
         cls = super().__new__(mcs, name, bases, body)
         cls._cache = {}
