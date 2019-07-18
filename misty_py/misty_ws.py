@@ -67,7 +67,7 @@ class SubInfo(NamedTuple):
 
 
 class SubData(NamedTuple):
-    """information about a particular msg from a subscription"""
+    """payload from an active subscription"""
     time: arrow.Arrow
     data: json_obj
     sub_info: SubInfo
@@ -78,6 +78,7 @@ class SubData(NamedTuple):
 
 
 class TaskInfo(NamedTuple):
+    """info about a running task and its associated websocket"""
     task: asyncio.Task
     ws: websockets.WebSocketClientProtocol
 

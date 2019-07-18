@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from asyncio import create_task
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
 from typing import Dict, List, Any, Optional, Set, Union
@@ -13,12 +14,13 @@ from .utils import *
 
 WIDTH = 480
 HEIGHT = 272
-NAME = 'co-pi-lette'
+
 
 # ======================================================================================================================
 # ======================================================================================================================
 
 
+# noinspection PyProtectedMember
 class PartialAPI(RestAPI):
     """
     represent part of the overall api
@@ -27,19 +29,27 @@ class PartialAPI(RestAPI):
     """
 
     def __init__(self, api: MistyAPI):
-        self._api = api
+        self.api = api
+        self._ready_holder: asyncio.Event = None
+
+    @property
+    def _ready(self):
+        """#TODO: do we need this here or can it just happen in regular, non-async __init__s"""
+        if self._ready_holder is None:
+            self._ready_holder = asyncio.Event()
+        return self._ready_holder
 
     async def _get(self, endpoint, **params):
-        return await self._api._get(endpoint, **params)
+        return await self.api._get(endpoint, **params)
 
     async def _get_j(self, endpoint, **params) -> JSONObjOrObjs:
-        return await self._api._get_j(endpoint, **params)
+        return await self.api._get_j(endpoint, **params)
 
     async def _post(self, endpoint, json: Optional[dict] = None, **params):
-        return await self._api._post(endpoint, json, **params)
+        return await self.api._post(endpoint, json, **params)
 
     async def _delete(self, endpoint, json: Optional[dict] = None, **params):
-        return await self._api._delete(endpoint, json, **params)
+        return await self.api._delete(endpoint, json, **params)
 
 
 # ======================================================================================================================
@@ -54,8 +64,8 @@ class ImageAPI(PartialAPI):
 
     async def list(self) -> Dict[str, json_obj]:
         images = await self._get_j('images/list')
-        self.saved_images = {i.name: i for i in images}
-        return self.saved_images
+        res = self.saved_images = {i.name: i for i in images}
+        return res
 
     async def get(self, file_name: str, as_base64: bool = True):
         # TODO:  test with as_base64 set to both True and False
@@ -130,8 +140,8 @@ class AudioAPI(PartialAPI):
 
     async def list(self) -> Dict[str, json_obj]:
         audio = await self._get_j('audio/list')
-        self.saved_audio = {a.name: a for a in audio}
-        return self.saved_audio
+        res = self.saved_audio = {a.name: a for a in audio}
+        return res
 
     async def upload(self, file_name: str, as_byte_array: bool = False, apply_immediately: bool = False,
                      overwrite: bool = True):
@@ -174,19 +184,15 @@ class FaceAPI(PartialAPI):
         # self.saved_faces = asyncio.run(self.list())
 
     async def list(self) -> Set[str]:
-        self.saved_faces = set(await self._get_j('faces'))
-        return self.saved_faces
+        res = self.saved_faces = set(await self._get_j('faces'))
+        return res
 
     async def delete(self, *, name: Optional[str] = None, delete_all: bool = False):
         """rm faces from misty"""
         if bool(delete_all) + bool(name) != 1:
             raise ValueError('set exactly one of `name` or `delete_all`')
 
-        kwargs = {}
-        if name:
-            kwargs['FaceId'] = name
-
-        await self._delete('faces', **kwargs)
+        await self._delete('faces', **(dict(FaceId=name) if name else {}))
 
     async def start_detection(self):
         """
@@ -195,7 +201,7 @@ class FaceAPI(PartialAPI):
         TODO: subscribe to FaceEvents to figure out when it's done?
         """
         await self._post('faces/detection/start')
-        sub_info = await self._api.ws.subscribe(Sub.face_recognition, self._process_face_message)
+        sub_info = await self.api.ws.subscribe(Sub.face_recognition, self._process_face_message)
 
     async def stop_detection(self):
         """stop finding/detecting faces in misty's line of vision"""
@@ -336,7 +342,7 @@ class SystemAPI(PartialAPI):
         return await self._get_j('logs')
 
     async def perform_system_update(self):
-        await self._post('system/update')
+        return await self._post('system/update')
 
     async def set_wifi_network(self, name, password):
         payload = dict(NetworkName=name, Password=password)
@@ -359,21 +365,29 @@ class _SlamHelper(PartialAPI):
         self._endpoint = endpoint
         self._num_current_slam_streams = 0
 
-    async def start(self):
-        return await self._post(f'slam/{self._endpoint}/start')
+    async def _handler(self, sub_data: SubData):
+        if sub_data.data.message.slamStatus.runMode == 'Exploring':
+            self._ready.set()
 
-    async def stop(self):
+    async def _start(self):
+        await self._post(f'slam/{self._endpoint}/start')
+        sub_info = await self.api.ws.subscribe(Sub.self_state, self._handler)
+        await self._ready.wait()
+        create_task(self.api.ws.unsubscribe(sub_info))
+
+    async def _stop(self):
+        self._ready.clear()
         return await self._post(f'slam/{self._endpoint}/stop')
 
     async def __aenter__(self):
         self._num_current_slam_streams += 1
         if self._num_current_slam_streams == 1:
-            await self.start()
+            await self._start()
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         self._num_current_slam_streams -= 1
         if self._num_current_slam_streams == 0:
-            await self.stop()
+            await self._stop()
 
 
 class NavigationAPI(PartialAPI):
