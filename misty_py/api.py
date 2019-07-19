@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from asyncio import create_task
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
 from typing import Dict, List, Any, Optional, Set, Union
@@ -67,17 +66,17 @@ class ImageAPI(PartialAPI):
         res = self.saved_images = {i.name: i for i in images}
         return res
 
-    async def get(self, file_name: str, as_base64: bool = True):
+    async def get(self, file_name: str, *, as_base64: bool = True):
         # TODO:  test with as_base64 set to both True and False
         cor = self._get_j if as_base64 else self._get
         return await cor('images', FileName=file_name, Base64=as_base64)
 
-    async def upload(self, file_name: str, as_byte_array: bool = False, width: Optional[int] = None,
-                     height: Optional[int] = None, apply_immediately: bool = False, overwrite: bool = True):
+    async def upload(self, file_name: str, width: Optional[int] = None, height: Optional[int] = None,
+                     *, apply_immediately: bool = False, overwrite_existing: bool = True, as_byte_array: bool = False):
         if as_byte_array:
             raise ValueError('uploading `as_byte_array` is not currently supported')
 
-        payload = json_obj(FileName=file_name, ImmediatelyApply=apply_immediately, OverwriteExisting=overwrite)
+        payload = json_obj(FileName=file_name, ImmediatelyApply=apply_immediately, OverwriteExisting=overwrite_existing)
         payload.add_if_not_none(Width=width, Height=height)
 
         return await self._post('images', payload)
@@ -143,15 +142,15 @@ class AudioAPI(PartialAPI):
         res = self.saved_audio = {a.name: a for a in audio}
         return res
 
-    async def upload(self, file_name: str, as_byte_array: bool = False, apply_immediately: bool = False,
-                     overwrite: bool = True):
+    async def upload(self, file_name: str, *, as_byte_array: bool = False, apply_immediately: bool = False,
+                     overwrite_existing: bool = True):
         if as_byte_array:
             raise ValueError('uploading `as_byte_array` is not currently supported')
 
-        payload = dict(FileName=file_name, ImmediatelyApply=apply_immediately, OverwriteExisting=overwrite)
+        payload = dict(FileName=file_name, ImmediatelyApply=apply_immediately, OverwriteExisting=overwrite_existing)
         await self._post('audio', payload)
 
-    async def play(self, file_name_or_id: str, volume: int = 100, as_file_name: bool = True):
+    async def play(self, file_name_or_id: str, volume: int = 100, *, as_file_name: bool = True):
         payload = dict(Volume=min(max(volume, 1), 100))
         payload['FileName' if as_file_name else 'AssetId'] = file_name_or_id
         await self._post('audio/play', payload)
@@ -334,8 +333,7 @@ class SystemAPI(PartialAPI):
         return await self._get_j('device')
 
     async def help(self, command: Optional[str] = None):
-        params = json_obj.from_not_none(command=command)
-        return await self._get_j('help', **params)
+        return await self._get_j('help', **json_obj.from_not_none(command=command))
 
     async def get_logs(self):
         # TODO: implement individual date functionality
@@ -355,7 +353,7 @@ class SystemAPI(PartialAPI):
 
 class _SlamHelper(PartialAPI):
     """
-    manage various slam functions on misty
+    context manager to handle initializing and stopping slam functionality
 
     used by the NavigationAPI
     """
@@ -366,14 +364,15 @@ class _SlamHelper(PartialAPI):
         self._num_current_slam_streams = 0
 
     async def _handler(self, sub_data: SubData):
+        """set the `_ready` event after the sensors are ready"""
+        # TODO: check if these are the same for all the slam types
         if sub_data.data.message.slamStatus.runMode == 'Exploring':
             self._ready.set()
 
     async def _start(self):
         await self._post(f'slam/{self._endpoint}/start')
-        sub_info = await self.api.ws.subscribe(Sub.self_state, self._handler)
-        await self._ready.wait()
-        create_task(self.api.ws.unsubscribe(sub_info))
+        async with self.api.ws.sub_unsub(Sub.self_state, self._handler):
+            await self._ready.wait()
 
     async def _stop(self):
         self._ready.clear()
@@ -452,7 +451,7 @@ class SkillAPI(PartialAPI):
         return await self._post('skills/start',
                                 json_obj.from_not_none(Skill=skill_name_or_uid, Method=method)).json()['result']
 
-    async def save(self, zip_file_name: str, apply_immediately: bool = False, overwrite_existing: bool = True):
+    async def save(self, zip_file_name: str, *, apply_immediately: bool = False, overwrite_existing: bool = True):
         await self._post('skills', dict(File=zip_file_name, ImmediatelyApply=apply_immediately,
                                         OverwriteExisting=overwrite_existing))
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from asyncio import create_task
+from contextlib import asynccontextmanager
 from enum import Enum
 from itertools import count
 from typing import Callable, Awaitable, Dict, NamedTuple
@@ -128,6 +129,18 @@ class MistyWS(metaclass=InstanceCache):
         await ti.ws.send(payload.json_str)
         await ti.ws.close()
         return True
+
+    @asynccontextmanager
+    async def sub_unsub(self, sub: Sub, handler: HandlerType, debounce_ms: int = 250) -> SubInfo:
+        """
+        context manager to subscribe to an event, wait for something, and, when the exec block's done, unsubscribe
+        useful, e.g., for starting up slam sensors and waiting for them to be ready
+        """
+        sub_info = await self.subscribe(sub, handler, debounce_ms)
+        try:
+            yield sub_info
+        finally:
+            create_task(self.unsubscribe(sub_info))
 
     async def _handle(self, ws, handler: HandlerType, sub_info):
         async for msg in ws:
