@@ -106,6 +106,11 @@ class MistyWS(metaclass=InstanceCache):
         return next(self._count)
 
     async def subscribe(self, sub: Sub, handler: HandlerType, debounce_ms: int = 250) -> SubInfo:
+        """
+        subscribe to events from misty
+
+        handler will be invoked every time an event is received
+        """
         sub_info = SubInfo(self._next_sub_id(), sub, handler)
         payload = json_obj(Operation='subscribe', Type=sub.value, DebounceMS=debounce_ms, EventName=sub_info.event_name)
 
@@ -117,6 +122,9 @@ class MistyWS(metaclass=InstanceCache):
         return sub_info
 
     async def unsubscribe(self, sub_info: SubInfo):
+        """
+        tell misty to stop sending events for this subscription and close the websocket
+        """
         try:
             ti = self._tasks[sub_info]
         except KeyError:
