@@ -241,10 +241,9 @@ class MovementAPI(PartialAPI):
 
     @staticmethod
     def _validate_vel_pct(**vel_pcts):
-        fails = {}
-        for name, val in vel_pcts.items():
-            if val is not None and not -100 <= val <= 100:
-                fails[name] = val
+        fails = {name: val for name, val in vel_pcts.items()
+                 if val is not None
+                 and not -100 <= val <= 100}
         if fails:
             raise ValueError(f'invalid value for vel_pct: {fails}, must be in range [-100, 100] or `None`')
 
@@ -277,8 +276,8 @@ class MovementAPI(PartialAPI):
     async def move_arms(self, l_position: Optional[float] = None, l_velocity: Optional[float] = None,
                         r_position: Optional[float] = None, r_velocity: Optional[float] = None):
         """pass either/both left and right arm settings"""
-        arm_settings = [ArmSettings('left', l_position, l_velocity),
-                        ArmSettings('right', r_position, r_velocity)]
+        arm_settings = (ArmSettings('left', l_position, l_velocity),
+                        ArmSettings('right', r_position, r_velocity))
         payload = {k: v for arm in arm_settings for k, v in arm.json.items()}
         if payload:
             return await self._post('arms/set', payload)
