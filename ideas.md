@@ -5,15 +5,15 @@
 - [ ] respond with info
 
 ##### speech-to-text
-- [ ] use [google](https://cloud.google.com/speech-to-text/)
-- [ ] set up trial google account
+- [x] use [google](https://cloud.google.com/speech-to-text/)
+- [x] set up trial google account
   - $0.006 per 15 seconds, in 15 second-intervals
   - 1000 requests would be $6
-- [ ] test 
+- [x] test 
 - [ ] end-to-end with misty
 
 ##### text-to-speech
-- [ ] use [google](https://cloud.google.com/text-to-speech/)
+- [x] use [google](https://cloud.google.com/text-to-speech/)
 - 0 to 1 million chars free with wavenet (better voice), $16/million after that
 - config:
 ```
@@ -33,10 +33,13 @@
         }
 ```
 
+- [x] translate to other languages (using google)
+
 ##### other
 - [ ] pitch recognition
 - [ ] pitch matching
 - [ ] text scrolling
 - [ ] video game chars
 - [ ] misty as security guard for our stuff (hat tip: josh)
+- [ ] integrate with homekit?
 
