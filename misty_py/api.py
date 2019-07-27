@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
+import textwrap
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
 from typing import Dict, List, Any, Optional, Set, Union
@@ -26,10 +28,15 @@ class PartialAPI(RestAPI):
 
     separate out methods into logical groups such as face, image, audio, etc
     """
+    _registered_classes = set()  # only used for MistyAPI's __doc__
 
     def __init__(self, api: MistyAPI):
         self.api = api
         self._ready_holder: asyncio.Event = None
+
+    def __init_subclass__(cls, **kwargs):
+        if not cls.__name__.startswith('_'):
+            cls._registered_classes.add(cls)
 
     @property
     def _ready(self):
@@ -56,6 +63,8 @@ class PartialAPI(RestAPI):
 # ======================================================================================================================
 
 class ImageAPI(PartialAPI):
+    """handle pics, video, uploading/downloading images, changing led color, etc"""
+
     def __init__(self, api: MistyAPI):
         super().__init__(api)
         # TODO: add back in once we have misty
@@ -462,16 +471,48 @@ class SkillAPI(PartialAPI):
 
 # ======================================================================================================================
 
+
 class MistyAPI(RestAPI):
+    """
+    asyncio-based REST API for the misty II robot
+
+    - wrap multiple `PartialAPI` objects to access misty
+        - for organizational ease
+    - handle interacting with websockets
+    - a simple usage example
+
+    ==========PartialAPIs============
+
+    {partial_api_section}
+    =================================
+
+
+    ===========websockets============
+
+        `ws` contains access to the websocket interface, used for pub/sub interaction
+
+        `subscription_data` contains the most recent piece of data received from websockets
+
+    =================================
+
+
+
+    ==============usage==============
+
+        {usage_section}
+
+    =================================
+    """
+
     _pool = ThreadPoolExecutor(16)
 
     def __init__(self, ip):
         self.ip = ip
         self.ws = MistyWS(self)
 
-        # ==================================================================================================================
-        # APIs
-        # ==================================================================================================================
+        # ==============================================================================================================
+        # PartialAPIs
+        # ==============================================================================================================
 
         self.images = ImageAPI(self)
         self.audio = AudioAPI(self)
@@ -481,9 +522,9 @@ class MistyAPI(RestAPI):
         self.navigation = NavigationAPI(self)
         self.skills = SkillAPI(self)
 
-        # ==================================================================================================================
+        # ==============================================================================================================
         # SUBSCRIPTION DATA - store most recent subscription info here
-        # ==================================================================================================================
+        # ==============================================================================================================
 
         self.subscription_data: Dict[Sub, SubData] = dict.fromkeys(Sub, SubData(arrow.Arrow.min, json_obj(), None))
 
@@ -515,3 +556,42 @@ class MistyAPI(RestAPI):
 
     async def _delete(self, endpoint, json: Optional[dict] = None, **params):
         return await self._request('DELETE', endpoint, **params, json=json)
+
+
+def _run_example():
+    """
+    example function showing how misty can be used
+
+    in addition, async funcs can be awaited directly from the jupyter console
+    """
+
+    async def run(ip):
+        api = MistyAPI(ip)
+
+        # run a single task and wait for it to be triggered
+        post_res = await api.movement.drive(0, -20, 10000)
+
+        # dispatch multiple tasks at once
+        coros = (api.images.take_picture(),
+                 api.system.help(),
+                 api.system.battery  # note: `battery` is an "async" property
+                 )
+        results_in_order = await asyncio.gather(*coros)
+        return results_in_order
+
+    asyncio.run(run('https://fake'))
+
+
+def _create_api_doc():
+    """create part of MistyAPI docstring from code"""
+    def _fmt_cls_doc(cls):
+        d = '\n\t'.join(textwrap.dedent((cls.__doc__ or '')).strip().split('\n'))
+        return f'{cls.__name__}: \n\t{d}\n\n'
+
+    res = '\n'.join(map(_fmt_cls_doc, PartialAPI._registered_classes))
+    return '\t' + '\n\t'.join(res.splitlines())
+
+
+MistyAPI.__doc__ = MistyAPI.__doc__.format(partial_api_section=_create_api_doc(),
+                                           usage_section='\n    '.join(inspect.getsource(_run_example).splitlines()))
+help(MistyAPI)

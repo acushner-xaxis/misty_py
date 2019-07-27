@@ -1,0 +1,6 @@
+aioconsole
+arrow
+requests
+websockets
+Pillow
+sty
