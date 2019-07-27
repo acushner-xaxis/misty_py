@@ -1,3 +1,6 @@
+##### incremental positioning
+- [ ] store arm/head/etc positions and be able to increment them
+
 ##### copilot
 - [ ] recognize trader
 - [ ] field question about strats
