@@ -1,6 +1,10 @@
 ##### incremental positioning
 - [ ] store arm/head/etc positions and be able to increment them
 
+
+##### interaction
+- [ ] get a second misty and have them interact (verbal argument/roast session lol)
+
 ##### copilot
 - [ ] recognize trader
 - [ ] field question about strats
