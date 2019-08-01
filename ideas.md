@@ -2,6 +2,7 @@
 - [ ] store arm/head/etc positions and be able to increment them
 - [ ] theme songs associated with faces
 - [ ] laser pointer ala terminator
+- [ ] misty spouts kaizen phrases all day
 
 
 ##### interaction
