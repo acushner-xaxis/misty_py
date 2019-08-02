@@ -11,7 +11,7 @@ import arrow
 import websockets
 
 from .utils import json_obj
-from .utils.datastructures import InstanceCache
+from .utils.core import InstanceCache
 
 __author__ = 'acushner'
 
@@ -87,6 +87,10 @@ class TaskInfo(NamedTuple):
 HandlerType = Callable[[SubData], Awaitable[None]]
 
 
+async def debug_handler(sd: SubData):
+    print(sd)
+
+
 class MistyWS(metaclass=InstanceCache):
     _count = count(1)
 
@@ -105,7 +109,7 @@ class MistyWS(metaclass=InstanceCache):
     def _next_sub_id(self) -> int:
         return next(self._count)
 
-    async def subscribe(self, sub: Sub, handler: HandlerType, debounce_ms: int = 250) -> SubInfo:
+    async def subscribe(self, sub: Sub, handler: HandlerType = debug_handler, debounce_ms: int = 250) -> SubInfo:
         """
         subscribe to events from misty
 

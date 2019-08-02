@@ -1,15 +1,17 @@
+import asyncio
 import json
 from abc import abstractmethod, ABC
 from enum import IntFlag
-from typing import NamedTuple, Dict, Optional, Union, List, Set, Any
+from pathlib import Path
+from typing import NamedTuple, Dict, Optional, Union, List, Set, Any, Coroutine
 from collections import ChainMap
 from PIL import Image as PImage
-from base64 import b64decode
+from base64 import b64decode, b64encode
 from io import BytesIO
 
 __all__ = (
     'SlamStatus', 'Coords', 'InstanceCache', 'ArmSettings', 'HeadSettings', 'json_obj', 'RestAPI', 'JSONObjOrObjs',
-    'decode_img')
+    'decode_img', 'save_data_locally', 'generate_upload_payload', 'delay')
 
 
 class SlamStatus(IntFlag):
@@ -165,19 +167,19 @@ JSONObjOrObjs = Union[json_obj, List[json_obj]]
 
 class RestAPI(ABC):
     @abstractmethod
-    def _get(self, endpoint, **params):
+    def _get(self, endpoint, *, _headers=None, **params):
         """REST GET"""
 
     @abstractmethod
-    def _get_j(self, endpoint, **params) -> JSONObjOrObjs:
+    def _get_j(self, endpoint, *, _headers=None, **params) -> JSONObjOrObjs:
         """REST GET - return as dict"""
 
     @abstractmethod
-    def _post(self, endpoint, json: Optional[dict] = None, **params):
+    def _post(self, endpoint, json: Optional[dict] = None, *, _headers=None, **params):
         """REST POST"""
 
     @abstractmethod
-    def _delete(self, endpoint, json: Optional[dict] = None, **params):
+    def _delete(self, endpoint, json: Optional[dict] = None, *, _headers=None, **params):
         """REST DELETE"""
 
 
@@ -197,11 +199,51 @@ class InstanceCache(type):
         return res
 
 
-def decode_img(img_b64, display_image=True):
-    res = b64decode(img_b64[img_b64.index(',') + 1:])
+def encode_data(filename_or_bytes: Union[str, bytes]) -> str:
+    data = filename_or_bytes
+    if isinstance(filename_or_bytes, str):
+        with open(filename_or_bytes, 'rb') as f:
+            data = f.read()
+    return b64encode(data).decode()
+
+
+def decode_data(data_base64) -> BytesIO:
+    res = data_base64
+    if isinstance(res, str):
+        res = res.encode()
+    if b',' in res:
+        res = res[res.index(b',') + 1:]
+    return BytesIO(b64decode(res))
+
+
+def decode_img(img_b64, display_image=True) -> BytesIO:
+    res = decode_data(img_b64)
     if display_image:
-        PImage.open(BytesIO(res))
+        PImage.open(res)
     return res
+
+
+def save_data_locally(path, data: BytesIO, suffix: str):
+    """given a filename, data, and suffix, write out data"""
+    with open(Path(path).with_suffix(suffix), 'wb') as f:
+        f.write(data.read())
+
+
+def generate_upload_payload(file_name, apply_immediately, overwrite_existing):
+    """upload for audio/images are very similar. this function encapsulates that"""
+    return json_obj(FileName=Path(file_name).name, Data=encode_data(file_name),
+                    ImmediatelyApply=apply_immediately, OverwriteExisting=overwrite_existing)
+
+
+async def delay(how_long_secs, to_run: Coroutine, cb: Optional[Coroutine] = None):
+    """
+    await `to_run` coroutine after a certain amount of time
+    if provided, `cb` will be awaited when done
+    """
+    await asyncio.sleep(how_long_secs)
+    await to_run
+    if cb:
+        await cb
 
 # class aobject:
 #     """enable async init of objects"""

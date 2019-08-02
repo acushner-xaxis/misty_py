@@ -5,11 +5,15 @@ import inspect
 import textwrap
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
-from typing import Dict, List, Any, Optional, Set, Union
+from typing import Dict, Optional, Set
+
+from PIL import Image as PImage
+from io import BytesIO
 
 import arrow
 import requests
 
+from misty_py.utils.core import save_data_locally, generate_upload_payload, delay
 from .misty_ws import MistyWS, Sub, SubData
 from .utils import *
 
@@ -45,22 +49,23 @@ class PartialAPI(RestAPI):
             self._ready_holder = asyncio.Event()
         return self._ready_holder
 
-    async def _get(self, endpoint, **params):
-        return await self.api._get(endpoint, **params)
+    async def _get(self, endpoint, *, _headers=None, **params):
+        return await self.api._get(endpoint, _headers=_headers, **params)
 
-    async def _get_j(self, endpoint, **params) -> JSONObjOrObjs:
-        return await self.api._get_j(endpoint, **params)
+    async def _get_j(self, endpoint, *, _headers=None, **params) -> JSONObjOrObjs:
+        return await self.api._get_j(endpoint, _headers=_headers, **params)
 
-    async def _post(self, endpoint, json: Optional[dict] = None, **params):
-        return await self.api._post(endpoint, json, **params)
+    async def _post(self, endpoint, json: Optional[dict] = None, *, _headers=None, **params):
+        return await self.api._post(endpoint, json, _headers=_headers, **params)
 
-    async def _delete(self, endpoint, json: Optional[dict] = None, **params):
-        return await self.api._delete(endpoint, json, **params)
+    async def _delete(self, endpoint, json: Optional[dict] = None, *, _headers=None, **params):
+        return await self.api._delete(endpoint, json, _headers=_headers, **params)
 
 
 # ======================================================================================================================
 # PartialAPIs
 # ======================================================================================================================
+
 
 class ImageAPI(PartialAPI):
     """handle pics, video, uploading/downloading images, changing led color, etc"""
@@ -70,31 +75,55 @@ class ImageAPI(PartialAPI):
         # TODO: add back in once we have misty
         # self.saved_images = asyncio.run(self.list())
 
+    @staticmethod
+    def save_image_locally(path, data: BytesIO):
+        save_data_locally(path, data, '.jpg')
+
+    @staticmethod
+    def save_video_locally(path, data: BytesIO):
+        save_data_locally(path, data, '.mov')
+
     async def list(self) -> Dict[str, json_obj]:
+        """
+        get images available on device as dict(name=json)
+        store in `self.saved_images`
+        return dict
+        """
         images = await self._get_j('images/list')
         res = self.saved_images = {i.name: i for i in images}
         return res
 
-    async def get(self, file_name: str, *, as_base64: bool = True):
-        # TODO:  test with as_base64 set to both True and False
+    async def get(self, file_name: str, *, as_base64: bool = False, display=True) -> bytes:
+        """
+        default to using binary data - decoding base64 is annoying
+        default to displaying the image as well
+        """
         cor = self._get_j if as_base64 else self._get
-        return await cor('images', FileName=file_name, Base64=as_base64)
+        res = await cor('images', FileName=file_name, Base64=as_base64)
+        if display:
+            PImage.open(BytesIO(res.content))
+        return res.content
 
     async def upload(self, file_name: str, width: Optional[int] = None, height: Optional[int] = None,
-                     *, apply_immediately: bool = False, overwrite_existing: bool = True, as_byte_array: bool = False):
-        if as_byte_array:
-            raise ValueError('uploading `as_byte_array` is not currently supported')
-
-        payload = json_obj(FileName=file_name, ImmediatelyApply=apply_immediately, OverwriteExisting=overwrite_existing)
+                     *, apply_immediately: bool = False, overwrite_existing: bool = True):
+        """upload a local image to misty"""
+        payload = generate_upload_payload(file_name, apply_immediately, overwrite_existing)
         payload.add_if_not_none(Width=width, Height=height)
-
         return await self._post('images', payload)
 
-    async def display(self, file_name: str, time_out_secs: float, alpha: float = 0.0):
-        # TODO: validate image exists - upload if not?
+    async def display(self, file_name: str, time_out_secs: Optional[float] = None, alpha: float = 1.0):
+        """
+        file_name: name on device
+        time_out_secs: no idea what this does. seems to have no effect
+        alpha: should be between 0 (don't show at all) to 1 (full brightness)
+        """
         return await self._post('images/display', dict(FileName=file_name, TimeOutSeconds=time_out_secs, Alpha=alpha))
 
     async def set_led(self, rgb: RGB):
+        """
+        change color of torso's led
+        use `RGB(0, 0, 0)` to turn led off
+        """
         rgb.validate()
         return await self._post('led', rgb.json)
 
@@ -104,7 +133,7 @@ class ImageAPI(PartialAPI):
     @staticmethod
     def _validate_take_picture(file_name, width, height, show_on_screen):
         if bool(width) + bool(height) == 1:
-            raise ValueError("must supply both width and height, or neither. can't supply just one")
+            raise ValueError("must supply either both width and height, or neither. can't supply just one")
 
         if show_on_screen and not file_name:
             raise ValueError('in order for `show_on_screen` to work, you must provide a file_name')
@@ -113,25 +142,36 @@ class ImageAPI(PartialAPI):
                            height: Optional[int] = None,
                            *, get_result: bool = True, show_on_screen: Optional[bool] = False,
                            overwrite_existing=True):
+        """
+        if height is supplied, so must be width, and vice versa
+        if you want to display on the screen, you must provide a filename
+
+        # TODO: better way return data? maybe return a BytesIO instead of the actual base64 values returned
+        """
         self._validate_take_picture(file_name, width, height, show_on_screen)
 
         payload = json_obj.from_not_none(Base64=get_result, FileName=file_name, Width=width, Height=height,
                                          DisplayOnScreen=show_on_screen, OverwriteExisting=overwrite_existing)
         return await self._get_j('cameras/rgb', **payload)
 
-    async def start_recording_video(self):
+    async def start_recording_video(self, how_long_secs: Optional[int] = None):
         """
         video is limited:
         - records up to 10 seconds
         - can only store one recording at a time
         """
-        return await self._post('video/record/start')
+        res = await self._post('video/record/start')
+        if how_long_secs:
+            how_long_secs = min(max(1, how_long_secs), 10)
+            asyncio.create_task(delay(how_long_secs, self.stop_recording_video()))
+        return res
 
     async def stop_recording_video(self):
         return await self._post('video/record/stop')
 
-    async def get_recorded_video(self):
-        return await self._get_j('video')
+    async def get_recorded_video(self) -> BytesIO:
+        res = await self._get('video')
+        return BytesIO(res.content)
 
 
 class AudioAPI(PartialAPI):
@@ -142,44 +182,55 @@ class AudioAPI(PartialAPI):
         # TODO: add back in once we have misty
         # self.saved_audio = asyncio.run(self.list())
 
-    async def get(self, file_name: str) -> Any:
+    async def get(self, file_name: str) -> BytesIO:
         # TODO: what the hell do we get back?
-        return await self._get_j('audio', FileName=file_name)
+        res = await self._get('audio', FileName=file_name)
+        return BytesIO(res.content)
 
     async def list(self) -> Dict[str, json_obj]:
+        """
+        get audio metadata available on device as dict(name=json)
+        store in `self.saved_audio`
+        return dict
+        """
         audio = await self._get_j('audio/list')
         res = self.saved_audio = {a.name: a for a in audio}
         return res
 
-    async def upload(self, file_name: str, *, as_byte_array: bool = False, apply_immediately: bool = False,
-                     overwrite_existing: bool = True):
-        if as_byte_array:
-            raise ValueError('uploading `as_byte_array` is not currently supported')
+    async def upload(self, file_name: str, *, apply_immediately: bool = False, overwrite_existing: bool = True):
+        """upload data (mp3, wav, not sure what else) to misty"""
+        return await self._post('audio', generate_upload_payload(file_name, apply_immediately, overwrite_existing))
 
-        payload = dict(FileName=file_name, ImmediatelyApply=apply_immediately, OverwriteExisting=overwrite_existing)
-        await self._post('audio', payload)
+    async def play(self, file_name: str, volume: int = 100, how_long_secs: Optional[int] = None):
+        """play for how long you want to"""
+        payload = dict(FileName=file_name, Volume=min(max(volume, 1), 100))
+        res = await self._post('audio/play', payload)
+        if how_long_secs:
+            asyncio.create_task(delay(how_long_secs, self.stop_playing()))
+        return res
 
-    async def play(self, file_name_or_id: str, volume: int = 100, *, as_file_name: bool = True):
-        payload = dict(Volume=min(max(volume, 1), 100))
-        payload['FileName' if as_file_name else 'AssetId'] = file_name_or_id
-        await self._post('audio/play', payload)
+    async def stop_playing(self):
+        """trigger a small amount of silence to stop a playing song"""
+        return await self.play('silence_stop.mp3')
 
     async def delete(self, file_name: str):
-        await self._delete('audio', dict(FileName=file_name))
+        return await self._delete('audio', dict(FileName=file_name))
 
     async def set_default_volume(self, volume):
-        await self._post('audio/volume', dict(Volume=min(max(volume, 0), 100)))
+        return await self._post('audio/volume', dict(Volume=min(max(volume, 0), 100)))
 
     async def start_recording(self, filename: str, how_long_secs: Optional[float] = None):
+        """record audio"""
         fn = f'{filename.rstrip(".wav")}.wav'
-        await self._post('audio/record/start', json_obj(FileName=fn))
+        res = await self._post('audio/record/start', json_obj(FileName=fn))
         if how_long_secs is not None:
             how_long_secs = min(max(how_long_secs, 0), 60)
             if how_long_secs:
-                await asyncio.sleep(how_long_secs)
-                await self.stop_recording()
+                asyncio.create_task(delay(how_long_secs, self.stop_recording()))
+        return res
 
     async def stop_recording(self):
+        """stop recording audio"""
         await self._post('audio/record/stop')
 
 
@@ -357,6 +408,9 @@ class SystemAPI(PartialAPI):
     async def send_to_backpack(self, msg: str):
         """not sure what kind of data/msg we can send - perhaps Base64 encode to send binary data?"""
         return await self._post('serial', dict(Message=msg))
+
+    async def set_flashlight(self, on: bool = True):
+        return await self._post('flashlight', dict(On=on))
 
 
 class _SlamHelper(PartialAPI):
@@ -540,22 +594,23 @@ class MistyAPI(RestAPI):
 
         return res
 
-    async def _request(self, method, endpoint, json=None, **params):
-        kwargs = json_obj.from_not_none(json=json)
-        f = partial(requests.request, method, self._endpoint(endpoint, **params), **kwargs)
+    async def _request(self, method, endpoint, json=None, *, _headers: Optional[Dict[str, str]] = None, **params):
+        req_kwargs = json_obj.from_not_none(json=json, headers=_headers)
+        f = partial(requests.request, method, self._endpoint(endpoint, **params), **req_kwargs)
+        # print(method, json, self._endpoint(endpoint, **params), _headers)
         return await asyncio.get_running_loop().run_in_executor(self._pool, f)
 
-    async def _get(self, endpoint, **params):
-        return await self._request('GET', endpoint, **params)
+    async def _get(self, endpoint, *, _headers=None, **params):
+        return await self._request('GET', endpoint, **params, _headers=_headers)
 
-    async def _get_j(self, endpoint, **params) -> JSONObjOrObjs:
-        return json_obj((await self._get(endpoint, **params)).json()['result'])
+    async def _get_j(self, endpoint, *, _headers=None, **params) -> JSONObjOrObjs:
+        return json_obj((await self._get(endpoint, **params, _headers=_headers)).json()['result'])
 
-    async def _post(self, endpoint, json: Optional[dict] = None, **params):
-        return await self._request('POST', endpoint, **params, json=json)
+    async def _post(self, endpoint, json: Optional[dict] = None, *, _headers=None, **params):
+        return await self._request('POST', endpoint, **params, json=json, _headers=_headers)
 
-    async def _delete(self, endpoint, json: Optional[dict] = None, **params):
-        return await self._request('DELETE', endpoint, **params, json=json)
+    async def _delete(self, endpoint, json: Optional[dict] = None, *, _headers=None, **params):
+        return await self._request('DELETE', endpoint, **params, json=json, _headers=_headers)
 
 
 def _run_example():
@@ -584,6 +639,7 @@ def _run_example():
 
 def _create_api_doc():
     """create part of MistyAPI docstring from code"""
+
     def _fmt_cls_doc(cls):
         d = '\n\t'.join(textwrap.dedent((cls.__doc__ or '')).strip().split('\n'))
         return f'{cls.__name__}: \n\t{d}\n\n'

@@ -1,2 +1,2 @@
 from .color import RGB
-from .datastructures import *
+from .core import *
