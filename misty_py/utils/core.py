@@ -2,6 +2,7 @@ import asyncio
 import json
 from abc import abstractmethod, ABC
 from enum import IntFlag
+from functools import wraps
 from pathlib import Path
 from typing import NamedTuple, Dict, Optional, Union, List, Set, Any, Coroutine
 from collections import ChainMap
@@ -11,7 +12,18 @@ from io import BytesIO
 
 __all__ = (
     'SlamStatus', 'Coords', 'InstanceCache', 'ArmSettings', 'HeadSettings', 'json_obj', 'RestAPI', 'JSONObjOrObjs',
-    'decode_img', 'save_data_locally', 'generate_upload_payload', 'delay')
+    'decode_img', 'save_data_locally', 'generate_upload_payload', 'delay', 'MISTY_URL', 'asyncpartial'
+)
+
+MISTY_URL = 'http://192.168.86.249'
+
+
+def asyncpartial(coro, *args, **kwargs):
+    @wraps(coro)
+    async def wrapped(*a, **kw):
+        await coro(*(args + a), **{**kwargs, **kw})
+
+    return wrapped
 
 
 class SlamStatus(IntFlag):

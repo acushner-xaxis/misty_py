@@ -1,0 +1,1 @@
+{"eventName": "LocomotionCommand_0004", "message": {"actionId": 0.0, "angularVelocity": 0.0, "created": "2019-08-02T23:14:21.7136433Z", "linearVelocity": 0.10000000000000009, "useTrapezoidalDrive": true, "valueIndex": 0.0}}

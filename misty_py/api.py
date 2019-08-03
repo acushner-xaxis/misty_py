@@ -13,8 +13,8 @@ from io import BytesIO
 import arrow
 import requests
 
-from misty_py.utils.core import save_data_locally, generate_upload_payload, delay
-from .misty_ws import MistyWS, Sub, SubData
+from .misty_ws import MistyWS
+from misty_py.subscriptions import Sub, SubData
 from .utils import *
 
 WIDTH = 480
@@ -201,12 +201,19 @@ class AudioAPI(PartialAPI):
         """upload data (mp3, wav, not sure what else) to misty"""
         return await self._post('audio', generate_upload_payload(file_name, apply_immediately, overwrite_existing))
 
-    async def play(self, file_name: str, volume: int = 100, how_long_secs: Optional[int] = None):
+    async def _handle_how_long_secs(self, how_long_secs, blocking):
+        if how_long_secs:
+            coro = delay(how_long_secs, self.stop_playing())
+            if blocking:
+                await coro
+            else:
+                asyncio.create_task(coro)
+
+    async def play(self, file_name: str, volume: int = 100, how_long_secs: Optional[int] = None, *, blocking=False):
         """play for how long you want to"""
         payload = dict(FileName=file_name, Volume=min(max(volume, 1), 100))
         res = await self._post('audio/play', payload)
-        if how_long_secs:
-            asyncio.create_task(delay(how_long_secs, self.stop_playing()))
+        await self._handle_how_long_secs(how_long_secs, blocking)
         return res
 
     async def stop_playing(self):
@@ -260,16 +267,12 @@ class FaceAPI(PartialAPI):
         TODO: subscribe to FaceEvents to figure out when it's done?
         """
         await self._post('faces/detection/start')
-        sub_info = await self.api.ws.subscribe(Sub.face_recognition, self._process_face_message)
 
     async def stop_detection(self):
         """stop finding/detecting faces in misty's line of vision"""
         await self._post('faces/detection/stop')
 
-    async def _process_face_message(self, sub_data: SubData):
-        print(sub_data)
-
-    async def start_training(self):
+    async def start_training(self, face_id: str):
         """
         start training a particular face
 
@@ -277,23 +280,33 @@ class FaceAPI(PartialAPI):
         TODO: set up something to alert the user that this is happening
             - change LED colors, display some text
         """
-        await self._post('faces/training/start')
+        return await self._post('faces/training/start', dict(FaceId=face_id))
 
     async def stop_training(self):
         """stop training a particular face"""
-        await self._post('faces/training/stop')
+        return await self._post('faces/training/stop')
 
     async def cancel_training(self):
         """shouldn't need to call unless you want to manually stop something in progress"""
-        await self._get('faces/training/cancel')
+        return await self._get('faces/training/cancel')
 
     async def start_recognition(self):
         """start attempting to recognize faces"""
-        await self._post('faces/recognition/start')
+        return await self._post('faces/recognition/start')
 
     async def stop_recognition(self):
         """stop attempting to recognize faces"""
-        await self._post('faces/recognition/stop')
+        return await self._post('faces/recognition/stop')
+
+    async def start_key_phrase_recognition(self):
+        raise NotImplementedError('# TODO: this')
+
+    async def stop_key_phrase_recognition(self):
+        raise NotImplementedError('# TODO: this')
+
+    async def stop_all(self):
+        coros = self.stop_training(), self.cancel_training(), self.stop_recognition()
+        return await asyncio.gather(*coros)
 
 
 class MovementAPI(PartialAPI):
@@ -365,7 +378,7 @@ class MovementAPI(PartialAPI):
 
     async def halt(self):
         """stop everything"""
-        return await self._post('robot/halt')
+        return await self._post('halt')
 
 
 class SystemAPI(PartialAPI):
@@ -411,6 +424,9 @@ class SystemAPI(PartialAPI):
 
     async def set_flashlight(self, on: bool = True):
         return await self._post('flashlight', dict(On=on))
+
+    async def reboot(self, core=True, sensory_services=True):
+        return await self._post('reboot', json_obj(Core=core, SensoryServices=sensory_services))
 
 
 class _SlamHelper(PartialAPI):
