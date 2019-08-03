@@ -20,6 +20,37 @@ questions_comments = '''
 '''
 
 
+class Person(NamedTuple):
+    name: str
+    target_acquired_phrase: str
+    theme_song: str
+
+    async def on_find(self, api: MistyAPI):
+        await api.movement.halt()
+        eh = EventHandler(wait_one)
+        print('first', arrow.utcnow())
+        async with api.ws.sub_unsub(Sub.audio_play_complete, eh):
+            await api.audio.play(self.target_acquired_phrase)
+            await eh.wait()
+        print('first done', arrow.utcnow())
+
+        print('second', arrow.utcnow())
+        await api.audio.play(self.theme_song, how_long_secs=6, blocking=True)
+        print('second done', arrow.utcnow())
+
+
+people: Dict[str, Person] = {}
+
+
+def add_person(person: Person):
+    people[person.name] = person
+
+
+add_person(Person('sweettuse', 'sweettuse_recognized.mp3', 'price_is_right.mp3'))
+
+
+# ======================================================================================================================
+
 class EventHandler:
     def __init__(self, handler: HandlerType):
         self._handler = handler
@@ -39,50 +70,6 @@ class EventHandler:
 async def wait_one(sd: SubData):
     print('wait_one', sd)
     return True
-
-
-class Person(NamedTuple):
-    name: str
-    target_acquired_phrase: str
-    theme_song: str
-
-    async def on_find(self, api: MistyAPI):
-        await api.movement.halt()
-        eh = EventHandler(wait_one)
-        print('first', arrow.utcnow())
-        async with api.ws.sub_unsub(Sub.audio_play_complete, eh):
-            await api.audio.play(self.target_acquired_phrase)
-            await eh.wait()
-        print('first done', arrow.utcnow())
-
-        print('second', arrow.utcnow())
-        await api.audio.play(self.theme_song, how_long_secs=6, blocking=True)
-        print('second done', arrow.utcnow())
-
-    # async def on_find(self, api: MistyAPI):
-    #     eh = EventHandler(wait_one)
-    #     async with api.ws.sub_unsub(Sub.audio_play_complete, eh):
-    #         print('first')
-    #         await api.audio.play(self.target_acquired_phrase)
-    #         await eh.wait()
-    #         print('first done')
-    #
-    #     eh.reset()
-    #     async with api.ws.sub_unsub(Sub.audio_play_complete, eh):
-    #         print('second')
-    #         await api.audio.play(self.target_acquired_phrase, how_long_secs=4)
-    #         await eh.wait()
-    #         print('second done')
-
-
-people: Dict[str, Person] = {}
-
-
-def add_person(person: Person):
-    people[person.name] = person
-
-
-add_person(Person('sweettuse', 'sweettuse_recognized.mp3', 'price_is_right.mp3'))
 
 
 class UnchangedValue:
