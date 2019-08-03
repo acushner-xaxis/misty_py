@@ -2,9 +2,8 @@
 - [x] `ImageAPI(self)`
     - note: i was unable to get [save image - image file](https://docs.mistyrobotics.com/misty-ii/reference/rest/#saveimage-image-file-)
     to work and had to go with [save image - data string](https://docs.mistyrobotics.com/misty-ii/reference/rest/#saveimage-data-string-)
-    `application/json`
 - [x] `AudioAPI(self)`
-- [ ] `FaceAPI(self)`
+- [x] `FaceAPI(self)`
 - [ ] `MovementAPI(self)`
 - [ ] `SystemAPI(self)`
 - [ ] `NavigationAPI(self)`
@@ -30,12 +29,12 @@
  
 - [ ] slam streaming
  
- ##### misc:
+##### misc:
  
  - is there an easy way to tell when face training is complete?
  - can we provide our own, custom key phrases?
  
- ##### TODO:
+##### TODO:
  
 - [ ] implement RemoveBlinkMappings - BETA
 - [ ] implement SetBlinking - BETA
