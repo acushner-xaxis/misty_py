@@ -12,11 +12,10 @@ __author__ = 'acushner'
 api = MistyAPI(MISTY_URL)
 
 questions_comments = '''
-- how can i tell when misty's head is done moving?
-    - currently just sleeping for a few seconds, but there's got to be a better way
 - documentation on how the websockets API actually acts is pretty fragmented
 - sometimes, even though face recog is running, it just won't recognize faces. i have no idea why
     - i checked to make sure that there were no errors
+    - rebooting helped
 - how can i tell, easily, when face training is done?
 '''
 
