@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import textwrap
+import os
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
 from typing import Dict, Optional, Set, NamedTuple
@@ -622,7 +623,13 @@ class MistyAPI(RestAPI):
 
     _pool = ThreadPoolExecutor(16)
 
-    def __init__(self, ip):
+    def __init__(self, ip=None):
+        if ip is None:
+            ip = os.environ.get("MISTY_IP")
+            if not ip:
+                raise Exception("You must provide an ip argument, or set $MISTY_IP")
+        if not ip.startswith("http://") or ip.startswith("https://"):
+            ip = "http://" + ip
         self.ip = ip
         self.ws = MistyWS(self)
 
