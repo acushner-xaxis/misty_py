@@ -5,7 +5,7 @@ import arrow
 import websockets
 
 import playaround.msgs as msgs
-from misty_py.subscriptions import Sub
+from misty_py.subscriptions import SubType
 from misty_py.utils import json_obj
 
 loop = asyncio.get_event_loop()
@@ -13,7 +13,7 @@ loop = asyncio.get_event_loop()
 handlers = dict()
 
 
-def register(sub: Sub):
+def register(sub: SubType):
     def deco(func):
         handlers[sub] = func
         return func
@@ -28,12 +28,12 @@ async def main(ws, path):
     async for msg in ws:
         msg = json_obj.from_str(msg)
         if msg.Operation == 'subscribe':
-            tasks[msg.EventName] = asyncio.create_task(handlers[Sub(msg.Type)](ws, msg.DebounceMS / 1000))
+            tasks[msg.EventName] = asyncio.create_task(handlers[SubType(msg.Type)](ws, msg.DebounceMS / 1000))
         elif msg.Operation == 'unsubscribe':
             tasks[msg.EventName].cancel()
 
 
-@register(Sub.self_state)
+@register(SubType.self_state)
 async def self_state(ws: websockets.WebSocketServerProtocol, debounce_secs=4):
     while True:
         print(arrow.now())

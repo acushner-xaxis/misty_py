@@ -1,11 +1,15 @@
 ##### apis:
 - [x] `ImageAPI(self)`
-    - note: i was unable to get [save image - image file](https://docs.mistyrobotics.com/misty-ii/reference/rest/#saveimage-image-file-)
+    - unable to get [save image - image file](https://docs.mistyrobotics.com/misty-ii/reference/rest/#saveimage-image-file-)
     to work and had to go with [save image - data string](https://docs.mistyrobotics.com/misty-ii/reference/rest/#saveimage-data-string-)
 - [x] `AudioAPI(self)`
 - [x] `FaceAPI(self)`
-- [ ] `MovementAPI(self)`
-- [ ] `SystemAPI(self)`
+- [x] `MovementAPI(self)`
+    - `drive_arc` is busted (i know it's in alpha, and it's really funny)
+    - didn't test `drive_heading`
+    - `drive_track` with negative values does nothing
+- [x] `SystemAPI(self)`
+    - `help` on something like `http://192.168.86.249/api/help?command=i_am_not_real` just hangs forever
 - [ ] `NavigationAPI(self)`
 - [ ] `SkillAPI(self)`
 

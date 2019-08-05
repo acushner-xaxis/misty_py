@@ -1,3 +1,4 @@
+import asyncio
 from enum import Enum
 from typing import NamedTuple, Set, Optional, Callable, Awaitable, FrozenSet
 
@@ -22,12 +23,15 @@ class EventCondition(NamedTuple):
 
 
 class Sensor(Enum):
+    """base enum: represent a sensor on misty"""
+
     @property
     def event_condition(self) -> EventCondition:
         return EventCondition('sensorId', self.value)
 
 
 class Touch(Sensor):
+    # TODO: get abbreviated values for `Touch` from misty
     """in the `sensorPosition` var"""
     chin = 'Chin'
     chin_left = 'ChinLeft'
@@ -45,6 +49,7 @@ class Touch(Sensor):
 
 
 class Bump(Sensor):
+    """sensor that indicates whether you hit something"""
     front_right = 'bfr'
     front_left = 'bfl'
     back_right = 'bbr'
@@ -52,6 +57,7 @@ class Bump(Sensor):
 
 
 class Actuator(Sensor):
+    """sensor that monitors the various possitions of the head and arms"""
     pitch = 'ahp'
     yaw = 'ahy'
     roll = 'ahr'
@@ -59,7 +65,8 @@ class Actuator(Sensor):
     right_arm = 'ara'
 
 
-class Sub(Enum):
+class SubType(Enum):
+    """represent subscription types"""
     actuator_position = 'ActuatorPosition'
     audio_play_complete = 'AudioPlayComplete'
     battery_charge = 'BatteryCharge'
@@ -78,19 +85,19 @@ class Sub(Enum):
 
 
 class SubEC(NamedTuple):
-    """used when subscribing to limit your subscription"""
-    sub: Sub
-    ec: Optional[FrozenSet[EventCondition]] = frozenset()
+    """combine subscription type with any event conditions you want to use"""
+    sub: SubType
+    ec: FrozenSet[EventCondition] = frozenset()
 
     @classmethod
-    def from_sub_ec(cls, sub: Sub, *ec: EventCondition):
+    def from_sub_ec(cls, sub: SubType, *ec: EventCondition):
         return cls(sub, frozenset(ec))
 
 
 class SubReq(NamedTuple):
     """identifying information about a particular requested subscription"""
     id: int
-    type: Sub
+    type: SubType
     handler: HandlerType
     api: 'MistyAPI'
     event_conditions: FrozenSet[EventCondition]
@@ -112,6 +119,29 @@ class SubData(NamedTuple):
     @classmethod
     def from_data(cls, o: json_obj, sr: SubReq):
         return cls(arrow.now(), o, sr)
+
+
+class EventCallback:
+    """
+    a callback combined with an event
+
+    if the `handler` returns a truthy value,
+    this class will `set` the event indicating to any waiters that they can proceed
+    """
+
+    def __init__(self, handler: HandlerType):
+        self._handler = handler
+        self._ready = asyncio.Event()
+
+    async def __call__(self, sd: SubData):
+        if await self._handler(sd):
+            self._ready.set()
+
+    async def wait(self):
+        await self._ready.wait()
+
+    def reset(self):
+        self._ready.clear()
 
 
 def __main():

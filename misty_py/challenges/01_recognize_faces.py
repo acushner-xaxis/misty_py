@@ -5,7 +5,7 @@ from typing import NamedTuple, Optional, Dict
 import arrow
 
 from misty_py.api import MistyAPI, MISTY_URL
-from misty_py.subscriptions import SubData, HandlerType, SubReq, Sub, Actuator, SubEC
+from misty_py.subscriptions import SubData, HandlerType, SubType, Actuator, SubEC, EventCallback
 
 __author__ = 'acushner'
 
@@ -14,7 +14,7 @@ api = MistyAPI(MISTY_URL)
 questions_comments = '''
 - documentation on how the websockets API actually acts is pretty fragmented
 - sometimes, even though face recog is running, it just won't recognize faces. i have no idea why
-    - i checked to make sure that there were no errors
+    - i think it was an ephemeral issue with onboard sensors failing
     - rebooting helped
 - how can i tell, easily, when face training is done?
 '''
@@ -27,9 +27,9 @@ class Person(NamedTuple):
 
     async def on_find(self, api: MistyAPI):
         await api.movement.halt()
-        eh = EventHandler(wait_one)
+        eh = EventCallback(wait_one)
         print('first', arrow.utcnow())
-        async with api.ws.sub_unsub(Sub.audio_play_complete, eh):
+        async with api.ws.sub_unsub(SubType.audio_play_complete, eh):
             await api.audio.play(self.target_acquired_phrase)
             await eh.wait()
         print('first done', arrow.utcnow())
@@ -50,21 +50,6 @@ add_person(Person('sweettuse', 'sweettuse_recognized.mp3', 'price_is_right.mp3')
 
 
 # ======================================================================================================================
-
-class EventHandler:
-    def __init__(self, handler: HandlerType):
-        self._handler = handler
-        self._ready = asyncio.Event()
-
-    async def __call__(self, sd: SubData):
-        if await self._handler(sd):
-            self._ready.set()
-
-    async def wait(self):
-        await self._ready.wait()
-
-    def reset(self):
-        self._ready.clear()
 
 
 async def wait_one(sd: SubData):
@@ -97,7 +82,7 @@ class UnchangedValue:
 
 async def _handle_head_movement(yaw):
     uv = UnchangedValue()
-    sub_ec = SubEC.from_sub_ec(Sub.actuator_position, Actuator.yaw.event_condition)
+    sub_ec = SubEC.from_sub_ec(SubType.actuator_position, Actuator.yaw.event_condition)
     await api.movement.move_head(yaw=yaw)
     async with api.ws.sub_unsub(sub_ec, uv, 400):
         await uv.wait()
@@ -113,11 +98,11 @@ async def _handle_face_recognition(sd: SubData):
         return True
 
 
-async def _init_face_recognition() -> EventHandler:
+async def _init_face_recognition() -> EventCallback:
     print('starting face recognition')
     await api.faces.start_recognition()
-    eh = EventHandler(_handle_face_recognition)
-    await api.ws.subscribe(Sub.face_recognition, eh)
+    eh = EventCallback(_handle_face_recognition)
+    await api.ws.subscribe(SubType.face_recognition, eh)
     return eh
 
 

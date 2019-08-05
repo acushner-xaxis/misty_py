@@ -5,7 +5,7 @@ import inspect
 import textwrap
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
-from typing import Dict, Optional, Set
+from typing import Dict, Optional, Set, NamedTuple
 
 from PIL import Image as PImage
 from io import BytesIO
@@ -14,7 +14,7 @@ import arrow
 import requests
 
 from .misty_ws import MistyWS
-from misty_py.subscriptions import Sub, SubData
+from misty_py.subscriptions import SubType, SubData
 from .utils import *
 
 WIDTH = 480
@@ -90,7 +90,7 @@ class ImageAPI(PartialAPI):
         return dict
         """
         images = await self._get_j('images/list')
-        res = self.saved_images = {i.name: i for i in images}
+        res = self.saved_images = json_obj((i.name, i) for i in images)
         return res
 
     async def get(self, file_name: str, *, as_base64: bool = False, display=True) -> bytes:
@@ -119,7 +119,7 @@ class ImageAPI(PartialAPI):
         """
         return await self._post('images/display', dict(FileName=file_name, TimeOutSeconds=time_out_secs, Alpha=alpha))
 
-    async def set_led(self, rgb: RGB):
+    async def set_led(self, rgb: RGB = RGB(0, 0, 0)):
         """
         change color of torso's led
         use `RGB(0, 0, 0)` to turn led off
@@ -157,7 +157,7 @@ class ImageAPI(PartialAPI):
     async def start_recording_video(self, how_long_secs: Optional[int] = None):
         """
         video is limited:
-        - records up to 10 seconds
+        - record up to 10 seconds
         - can only store one recording at a time
         """
         res = await self._post('video/record/start')
@@ -194,7 +194,7 @@ class AudioAPI(PartialAPI):
         return dict
         """
         audio = await self._get_j('audio/list')
-        res = self.saved_audio = {a.name: a for a in audio}
+        res = self.saved_audio = json_obj((a.name, a) for a in audio)
         return res
 
     async def upload(self, file_name: str, *, apply_immediately: bool = False, overwrite_existing: bool = True):
@@ -299,14 +299,15 @@ class FaceAPI(PartialAPI):
         return await self._post('faces/recognition/stop')
 
     async def start_key_phrase_recognition(self):
-        raise NotImplementedError('# TODO: this')
+        # TODO: this
+        raise NotImplementedError
 
     async def stop_key_phrase_recognition(self):
-        raise NotImplementedError('# TODO: this')
+        # TODO: this
+        raise NotImplementedError
 
     async def stop_all(self):
-        coros = self.stop_training(), self.cancel_training(), self.stop_recognition()
-        return await asyncio.gather(*coros)
+        return await asyncio.gather(self.stop_training(), self.cancel_training(), self.stop_recognition())
 
 
 class MovementAPI(PartialAPI):
@@ -320,10 +321,11 @@ class MovementAPI(PartialAPI):
         if fails:
             raise ValueError(f'invalid value for vel_pct: {fails}, must be in range [-100, 100] or `None`')
 
-    async def drive(self, linear_vel_pct: int, angular_vel_pct: int, time_ms: Optional[int] = None):
+    async def drive(self, linear_vel_pct: int = 0, angular_vel_pct: int = 0, time_ms: Optional[int] = None):
         """
-        angular_vel_pct: -100 is full speed clockwise, 100 is full speed counter-clockwise
+        angular_vel_pct: -100 is full speed counter-clockwise, 100 is full speed clockwise
         """
+        angular_vel_pct *= -1
         self._validate_vel_pct(linear_vel_pct=linear_vel_pct, angular_vel_pct=angular_vel_pct)
         payload = json_obj.from_not_none(LinearVelocity=linear_vel_pct, AngularVelocity=angular_vel_pct)
         endpoint = 'drive'
@@ -334,17 +336,11 @@ class MovementAPI(PartialAPI):
 
         return await self._post(endpoint, payload)
 
-    async def drive_track(self, left_track_vel_pct: float = 0.0, right_track_vel_pct: float = 0.0):
+    async def drive_track(self, left_track_vel_pct: int = 0, right_track_vel_pct: int = 0):
         """control drive tracks individually"""
         self._validate_vel_pct(left_track_vel_pct=left_track_vel_pct, right_track_vel_pct=right_track_vel_pct)
         return await self._post('drive/track',
                                 dict(LeftTrackSpeed=left_track_vel_pct, RightTrackSpeed=right_track_vel_pct))
-
-    async def move_arms(self, *arm_settings: ArmSettings):
-        """pass either/both left and right arm settings"""
-        payload = {k: v for arm in arm_settings for k, v in arm.json.items()}
-        if payload:
-            return await self._post('arms/set', payload)
 
     async def move_arms(self, l_position: Optional[float] = None, l_velocity: Optional[float] = None,
                         r_position: Optional[float] = None, r_velocity: Optional[float] = None):
@@ -380,6 +376,19 @@ class MovementAPI(PartialAPI):
         """stop everything"""
         return await self._post('halt')
 
+    async def drive_arc(self, heading_degrees: float, radius_m: float, time_ms: float, *, reverse: bool = False):
+        payload = json_obj(Heading=heading_degrees * -1, Radius=radius_m, TimeMs=time_ms, Reverse=reverse)
+        return await self._post('drive/arc', payload)
+
+
+class BatteryInfo(NamedTuple):
+    percent: float
+    metadata: json_obj
+
+    @classmethod
+    def from_meta(cls, data):
+        return cls(data.chargePercent * 100, data)
+
 
 class SystemAPI(PartialAPI):
     """
@@ -388,35 +397,72 @@ class SystemAPI(PartialAPI):
     get logs, battery, etc
     """
 
-    async def clear_error_msg(self):
+    async def clear_display_text(self):
         return await self._post('text/clear')
 
     @property
-    async def networks(self):
-        return await self._get_j('networks')
-        # return [Wifi.from_misty(o) for o in await self._get_j('networks')]
+    async def wifi(self) -> Dict[str, str]:
+        networks = await self._get_j('networks')
+        return {n.ssid: n for n in networks}
+
+    async def connect_wifi(self, ssid):
+        """connect to known wifi"""
+        return await self._post('networks', json_obj(NetworkId=ssid))
+
+    async def set_wifi_network(self, name, password):
+        """set up with username and password"""
+        payload = dict(NetworkName=name, Password=password)
+        return await self._post('network', payload)
+
+    async def forget_wifi(self, ssid):
+        return await self._delete('networks', json_obj(NetworkId=ssid))
+
+    async def scan_wifi(self):
+        """find available wifi networks"""
+        return await self._get_j('networks/scan')
 
     @property
-    async def battery(self):
-        return await self._get_j('battery')
+    async def battery(self) -> BatteryInfo:
+        return BatteryInfo.from_meta(await self._get_j('battery'))
 
     @property
     async def device_info(self):
         return await self._get_j('device')
 
-    async def help(self, command: Optional[str] = None):
-        return await self._get_j('help', **json_obj.from_not_none(command=command))
+    async def help(self, endpoint: Optional[str] = None):
+        """specs for the system at large"""
+        return await self._get_j('help', **json_obj.from_not_none(command=endpoint))
 
-    async def get_logs(self):
-        # TODO: implement individual date functionality
-        return await self._get_j('logs')
+    async def get_logs(self, date: arrow.Arrow = None) -> str:
+        params = json_obj()
+        if date:
+            params.date = date.format('YYYY/MM/DD')
+        return (await self._get('logs', **params)).json()['result']
+
+    @property
+    async def log_level(self) -> str:
+        return (await self._get('logs/level')).json()['result']
+
+    async def set_log_level(self, log_level: str):
+        return await self._post('logs/level', json_obj(LogLevel=log_level))
+
+    @property
+    async def is_update_available(self) -> bool:
+        return (await self._get('system/updates')).json()['result']
 
     async def perform_system_update(self):
         return await self._post('system/update')
 
-    async def set_wifi_network(self, name, password):
-        payload = dict(NetworkName=name, Password=password)
-        return await self._post('network', payload)
+    async def get_websocket_names(self, class_name: Optional[str] = None):
+        """specs for websocket api"""
+        params = json_obj()
+        if class_name:
+            params.websocketClass = class_name
+        return await self._get_j('websockets', **params)
+
+    @property
+    async def websocket_version(self):
+        return (await self._get('websocket/version')).json()['result']
 
     async def send_to_backpack(self, msg: str):
         """not sure what kind of data/msg we can send - perhaps Base64 encode to send binary data?"""
@@ -447,24 +493,24 @@ class _SlamHelper(PartialAPI):
         if sub_data.data.message.slamStatus.runMode == 'Exploring':
             self._ready.set()
 
-    async def _start(self):
+    async def start(self):
         await self._post(f'slam/{self._endpoint}/start')
-        async with self.api.ws.sub_unsub(Sub.self_state, self._handler):
+        async with self.api.ws.sub_unsub(SubType.self_state, self._handler):
             await self._ready.wait()
 
-    async def _stop(self):
+    async def stop(self):
         self._ready.clear()
         return await self._post(f'slam/{self._endpoint}/stop')
 
     async def __aenter__(self):
         self._num_current_slam_streams += 1
         if self._num_current_slam_streams == 1:
-            await self._start()
+            await self.start()
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         self._num_current_slam_streams -= 1
         if self._num_current_slam_streams == 0:
-            await self._stop()
+            await self.stop()
 
 
 class NavigationAPI(PartialAPI):
@@ -596,7 +642,8 @@ class MistyAPI(RestAPI):
         # SUBSCRIPTION DATA - store most recent subscription info here
         # ==============================================================================================================
 
-        self.subscription_data: Dict[Sub, SubData] = dict.fromkeys(Sub, SubData(arrow.Arrow.min, json_obj(), None))
+        self.subscription_data: Dict[SubType, SubData] = dict.fromkeys(SubType,
+                                                                       SubData(arrow.Arrow.min, json_obj(), None))
 
     # ==================================================================================================================
     # REST CALLS
@@ -613,7 +660,7 @@ class MistyAPI(RestAPI):
     async def _request(self, method, endpoint, json=None, *, _headers: Optional[Dict[str, str]] = None, **params):
         req_kwargs = json_obj.from_not_none(json=json, headers=_headers)
         f = partial(requests.request, method, self._endpoint(endpoint, **params), **req_kwargs)
-        # print(method, json, self._endpoint(endpoint, **params), _headers)
+        print(method, self._endpoint(endpoint, **params), _headers)
         return await asyncio.get_running_loop().run_in_executor(self._pool, f)
 
     async def _get(self, endpoint, *, _headers=None, **params):

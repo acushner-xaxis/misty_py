@@ -5,7 +5,7 @@ from enum import IntFlag
 from functools import wraps
 from pathlib import Path
 from typing import NamedTuple, Dict, Optional, Union, List, Set, Any, Coroutine
-from collections import ChainMap
+from collections import ChainMap, defaultdict
 from PIL import Image as PImage
 from base64 import b64decode, b64encode
 from io import BytesIO
@@ -43,7 +43,11 @@ class Coords(NamedTuple):
 
 
 def _denormalize(obj) -> Dict[str, float]:
-    """this function is not in a base class due to NamedTuple's custom mro setup"""
+    """
+    transform values generally in the range [-100.0, 100] to values misty is expecting
+
+    this function is not in a base class due to NamedTuple's custom mro setup
+    """
     attrs = ((k, v) for k, v in obj._var_range.items() if getattr(obj, k) is not None)
     return dict((k, getattr(obj, k) / 100 * v) for k, v in attrs)
 
@@ -59,7 +63,7 @@ class ArmSettings(NamedTuple):
     position: float
     velocity: float = 100
 
-    _var_range = dict(position=-100, velocity=100)
+    _var_range = dict(position=-90, velocity=10)
 
     @property
     def json(self) -> Dict[str, float]:
@@ -212,6 +216,7 @@ class InstanceCache(type):
 
 
 def encode_data(filename_or_bytes: Union[str, bytes]) -> str:
+    """transform either a filename or bytes to base64 encoding"""
     data = filename_or_bytes
     if isinstance(filename_or_bytes, str):
         with open(filename_or_bytes, 'rb') as f:
@@ -220,6 +225,7 @@ def encode_data(filename_or_bytes: Union[str, bytes]) -> str:
 
 
 def decode_data(data_base64) -> BytesIO:
+    """decode base64 data"""
     res = data_base64
     if isinstance(res, str):
         res = res.encode()
@@ -249,13 +255,35 @@ def generate_upload_payload(file_name, apply_immediately, overwrite_existing):
 
 async def delay(how_long_secs, to_run: Coroutine, cb: Optional[Coroutine] = None):
     """
-    await `to_run` coroutine after a certain amount of time
-    if provided, `cb` will be awaited when done
+    run `to_run` coroutine after `how_long_secs`
+    if provided, `cb` (callback) will be called when done
     """
     await asyncio.sleep(how_long_secs)
     await to_run
     if cb:
         await cb
+
+
+def format_help(help):
+    """
+    parse json from misty's help in a useful way
+    print the values nicely
+    """
+    res = defaultdict(list)
+    for method, commands in help.items():
+        method = method.upper()
+        for cmd in commands:
+            res[cmd.apiCommand.apiCommandGroup].append((method, cmd))
+
+    def pp(l):
+        for method, d in l:
+            print(f'{d.baseApiCommand}: {method} {d.endpoint}')
+
+    for k, v in res.items():
+        print(f'============{k}=============')
+        pp(v)
+        print()
+    return res
 
 # class aobject:
 #     """enable async init of objects"""

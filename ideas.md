@@ -3,6 +3,8 @@
 - [ ] theme songs associated with faces
 - [ ] laser pointer ala terminator
 - [ ] misty spouts kaizen phrases all day
+- [ ] emotions/moods
+- [ ] get misty to dance
 
 
 ##### interaction
@@ -52,5 +54,6 @@
 - [ ] video game chars
 - [ ] misty as security guard for our stuff (hat tip: josh)
 - [ ] integrate with homekit?
+- [ ] dialog flow from google
 
 

@@ -8,7 +8,7 @@ from typing import Dict, NamedTuple, Union
 
 import websockets
 
-from misty_py.subscriptions import Sub, SubReq, SubData, HandlerType, SubEC
+from misty_py.subscriptions import SubType, SubReq, SubData, HandlerType, SubEC
 from .utils import json_obj
 from .utils.core import InstanceCache
 
@@ -23,13 +23,10 @@ class TaskInfo(NamedTuple):
 
 async def debug_handler(sd: SubData):
     print(sd)
-    # if isinstance(sd.data.message, json_obj):
-    #     with open(f'/tmp/{sd.sub_req.type.name}.json', 'w') as f:
-    #         json.dump(sd.data, f)
-    # await sd.sub_req.api.ws.unsubscribe(sd.sub_req)
 
 
 class MistyWS(metaclass=InstanceCache):
+    """class that manages websocket interactions with misty"""
     _count = count(1)
 
     def __init__(self, misty_api):
@@ -41,20 +38,19 @@ class MistyWS(metaclass=InstanceCache):
     @staticmethod
     def _init_endpoint(url):
         res = f'{url.replace("http", "ws", 1)}/pubsub'
-        print(res)
         return res
 
     def _next_sub_id(self) -> int:
         return next(self._count)
 
-    async def subscribe(self, sub_ec: Union[Sub, SubEC], handler: HandlerType = debug_handler,
+    async def subscribe(self, sub_ec: Union[SubType, SubEC], handler: HandlerType = debug_handler,
                         debounce_ms: int = 250) -> SubReq:
         """
         subscribe to events from misty
 
         handler will be invoked every time an event is received
         """
-        if isinstance(sub_ec, Sub):
+        if isinstance(sub_ec, SubType):
             sub_ec = SubEC.from_sub_ec(sub_ec)
         sub_req = SubReq(self._next_sub_id(), sub_ec.sub, handler, self.api, sub_ec.ec)
 
@@ -71,16 +67,17 @@ class MistyWS(metaclass=InstanceCache):
         return sub_req
 
     async def subscribe_all(self, handler: HandlerType, debounce_ms=2000):
-        coros = (self.subscribe(sub, handler=handler, debounce_ms=debounce_ms) for sub in Sub)
+        """subscribe to everything with no event conditions"""
+        coros = (self.subscribe(sub, handler=handler, debounce_ms=debounce_ms) for sub in SubType)
         return await asyncio.gather(*coros)
 
-    async def unsubscribe(self, sub_req: Union[Sub, SubReq]):
+    async def unsubscribe(self, sub_req: Union[SubType, SubReq]):
         """
         tell misty to stop sending events for this subscription and close the websocket
 
-        can unsubscribe either by `Sub` or `SubReq`
+        can unsubscribe either by `SubType` or `SubReq`
         """
-        if isinstance(sub_req, Sub):
+        if isinstance(sub_req, SubType):
             coros = (self.unsubscribe(si) for si in self._tasks if si.type is sub_req)
             return await asyncio.gather(*coros)
 
@@ -98,11 +95,12 @@ class MistyWS(metaclass=InstanceCache):
         return True
 
     async def unsubscribe_all(self):
+        """cancel all active subscriptions"""
         coros = (self.unsubscribe(si) for si in self._tasks)
         return await asyncio.gather(*coros)
 
     @asynccontextmanager
-    async def sub_unsub(self, sub: Union[Sub, SubEC], handler: HandlerType, debounce_ms: int = 250) -> SubReq:
+    async def sub_unsub(self, sub: Union[SubType, SubEC], handler: HandlerType, debounce_ms: int = 250) -> SubReq:
         """
         context manager to subscribe to an event, wait for something, and, when the exec block's done, unsubscribe
         useful, e.g., for starting up slam sensors and waiting for them to be ready
@@ -114,6 +112,11 @@ class MistyWS(metaclass=InstanceCache):
             create_task(self.unsubscribe(sub_req))
 
     async def _handle(self, ws, handler: HandlerType, sub_req):
+        """
+        take messages from the websocket and pass them on to the handler
+        additionally, skip the registration message
+        TODO: check for error on subscription registration
+        """
         async for msg in ws:
             o = json_obj.from_str(msg)
 
