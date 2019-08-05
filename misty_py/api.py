@@ -623,14 +623,9 @@ class MistyAPI(RestAPI):
 
     _pool = ThreadPoolExecutor(16)
 
-    def __init__(self, ip=None):
-        if ip is None:
-            ip = os.environ.get("MISTY_IP")
-            if not ip:
-                raise Exception("You must provide an ip argument, or set $MISTY_IP")
-        if not ip.startswith("http://") or ip.startswith("https://"):
-            ip = "http://" + ip
-        self.ip = ip
+    def __init__(self, ip: Optional[str] = None):
+        """either pass in ip directly or set in env"""
+        self.ip = self._init_ip(ip)
         self.ws = MistyWS(self)
 
         # ==============================================================================================================
@@ -651,6 +646,16 @@ class MistyAPI(RestAPI):
 
         self.subscription_data: Dict[SubType, SubData] = dict.fromkeys(SubType,
                                                                        SubData(arrow.Arrow.min, json_obj(), None))
+
+    @staticmethod
+    def _init_ip(ip):
+        ip = ip or os.environ.get('MISTY_IP')
+        if not ip:
+            raise ValueError('You must provide an ip argument, or set $MISTY_IP in your env')
+
+        if not ip.startswith('http://') or ip.startswith('https://'):
+            ip = f'http://{ip}'
+        return ip
 
     # ==================================================================================================================
     # REST CALLS
