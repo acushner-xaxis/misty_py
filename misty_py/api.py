@@ -15,7 +15,7 @@ import arrow
 import requests
 
 from .misty_ws import MistyWS
-from misty_py.subscriptions import SubType, SubData
+from misty_py.subscriptions import SubType, SubData, EventCallback
 from .utils import *
 
 WIDTH = 480
@@ -203,12 +203,19 @@ class AudioAPI(PartialAPI):
         return await self._post('audio', generate_upload_payload(file_name, apply_immediately, overwrite_existing))
 
     async def _handle_how_long_secs(self, how_long_secs, blocking):
-        if how_long_secs:
+        if how_long_secs is not None:
             coro = delay(how_long_secs, self.stop_playing())
             if blocking:
                 await coro
             else:
                 asyncio.create_task(coro)
+        elif blocking:
+            async def _wait_one(_):
+                return True
+
+            event = EventCallback(_wait_one)
+            async with self.api.ws.sub_unsub(SubType.audio_play_complete, event):
+                await event.wait()
 
     async def play(self, file_name: str, volume: int = 100, how_long_secs: Optional[int] = None, *, blocking=False):
         """play for how long you want to"""
