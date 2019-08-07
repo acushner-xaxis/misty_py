@@ -425,7 +425,7 @@ class SystemAPI(PartialAPI):
         return await self._get_j('networks/scan')
 
     @property
-    async def battery(self) -> BatteryInfo:
+    async def battery_info(self) -> BatteryInfo:
         return BatteryInfo.from_meta(await self._get_j('battery'))
 
     @property
@@ -436,7 +436,7 @@ class SystemAPI(PartialAPI):
         """specs for the system at large"""
         return await self._get_j('help', **json_obj.from_not_none(command=endpoint))
 
-    async def get_logs(self, date: arrow.Arrow = None) -> str:
+    async def get_logs(self, date: arrow.Arrow = arrow.now()) -> str:
         params = json_obj()
         if date:
             params.date = date.format('YYYY/MM/DD')
@@ -579,10 +579,12 @@ class NavigationAPI(PartialAPI):
             return BytesIO(res.content)
 
     async def get_map(self):
-        return await self._get('slam/map')
+        return await self._get_j('slam/map')
 
     async def map(self):
-        """# TODO: implement algo for misty to move around slowly mapping her environment"""
+        """# algo for misty to move around slowly mapping her environment"""
+        # TODO: implement
+        raise NotImplementedError
 
     async def drive_to_coordinates(self, coords: Coords):
         async with self.slam_tracking:

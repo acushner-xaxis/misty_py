@@ -1,6 +1,10 @@
+from __future__ import annotations
+
 import asyncio
+from abc import abstractmethod
+from contextlib import suppress
 from enum import Enum
-from typing import NamedTuple, Set, Optional, Callable, Awaitable, FrozenSet
+from typing import NamedTuple, Set, Optional, Callable, Awaitable, FrozenSet, Generator
 
 import arrow
 
@@ -26,13 +30,27 @@ class Sensor(Enum):
     """base enum: represent a sensor on misty"""
 
     @property
-    def event_condition(self) -> EventCondition:
+    @abstractmethod
+    def _sub_type(self) -> SubType:
+        """fill in with the associated subscription type"""
+
+    @property
+    def _event_condition(self) -> EventCondition:
         return EventCondition('sensorId', self.value)
+
+    @property
+    def sub(self) -> SubEC:
+        return SubEC.from_sub_ec(self._sub_type, self._event_condition)
+
+    @classmethod
+    def get_all_subscriptions(cls) -> Generator[SubEC]:
+        return (s.sub for s in cls)
 
 
 class Touch(Sensor):
     # TODO: get abbreviated values for `Touch` from misty
     """in the `sensorPosition` var"""
+
     chin = 'Chin'
     chin_left = 'ChinLeft'
     chin_right = 'ChinRight'
@@ -44,25 +62,38 @@ class Touch(Sensor):
     scruff = 'Scruff'
 
     @property
-    def event_condition(self) -> EventCondition:
+    def _event_condition(self) -> EventCondition:
         return EventCondition('sensorPosition', self.value)
+
+    @property
+    def _sub_type(self) -> SubType:
+        return SubType.touch_sensor
 
 
 class Bump(Sensor):
     """sensor that indicates whether you hit something"""
+
     front_right = 'bfr'
     front_left = 'bfl'
     back_right = 'bbr'
     back_left = 'bbl'
 
+    @property
+    def _sub_type(self) -> SubType:
+        return SubType.bump_sensor
+
 
 class Actuator(Sensor):
-    """sensor that monitors the various possitions of the head and arms"""
+    """sensor that monitors the various positions of the head and arms"""
     pitch = 'ahp'
     yaw = 'ahy'
     roll = 'ahr'
     left_arm = 'ala'
     right_arm = 'ara'
+
+    @property
+    def _sub_type(self) -> SubType:
+        return SubType.actuator_position
 
 
 class SubType(Enum):
@@ -82,6 +113,9 @@ class SubType(Enum):
     time_of_flight = 'TimeOfFlight'
     touch_sensor = 'TouchSensor'
     world_state = 'WorldState'
+
+
+_sub_type_ec_dict = {}
 
 
 class SubEC(NamedTuple):
@@ -147,6 +181,21 @@ class EventCallback:
 
     def clear(self):
         self._ready.clear()
+
+
+class UnchangedValue:
+    """useful for determining when something is done, say, moving"""
+
+    def __init__(self):
+        self._prev: Optional[SubData] = None
+
+    __call__: HandlerType
+
+    async def __call__(self, sd: SubData):
+        print('uv', sd)
+        prev, self._prev = self._prev, sd
+        with suppress(AttributeError):
+            return prev.data.message.value == sd.data.message.value
 
 
 def __main():

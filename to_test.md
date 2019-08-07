@@ -9,12 +9,15 @@
     - `drive_arc` is busted (i know it's in alpha, and it's really funny)
     - didn't test `drive_heading`
     - `drive_track` with negative values does nothing
+    - `angular_vel_pct` is busted in general
+        - misty keeps speeding up endlessly from whatever value you initially set
 - [x] `SystemAPI(self)`
     - `help` on something like `http://192.168.86.249/api/help?command=i_am_not_real` just hangs forever
     - when not plugged in, battery charge info issues:
         - battery get call shows 0% but misty's still completely on
         - battery subscription also shows 0%
-- [ ] `NavigationAPI(self)`
+- [x] `NavigationAPI(self)`
+    - still need to get mapping and tracking working, but it's tough
 - [ ] `SkillAPI(self)`
 
 
@@ -35,11 +38,10 @@
 - [x] `touch_sensor = 'TouchSensor'`
 - [x] `world_state = 'WorldState'`
  
-- [ ] SLAM
-    - [ ] streaming
-        - streaming doesn't work. 
+- [x] SLAM
+    - [x] streaming
     - [x] mapping
-    - [ ] tracking
+    - [x] tracking
  
 ##### misc:
  

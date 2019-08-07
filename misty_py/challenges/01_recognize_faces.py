@@ -1,11 +1,10 @@
 import asyncio
-from contextlib import suppress
-from typing import NamedTuple, Optional, Dict
+from typing import NamedTuple, Dict
 
 import arrow
 
 from misty_py.api import MistyAPI, MISTY_URL
-from misty_py.subscriptions import SubData, HandlerType, SubType, Actuator, SubEC, EventCallback
+from misty_py.subscriptions import SubData, SubType, Actuator, SubEC, EventCallback, UnchangedValue
 
 __author__ = 'acushner'
 
@@ -54,26 +53,10 @@ async def wait_one(sd: SubData):
     return True
 
 
-class UnchangedValue:
-    """useful for determining when something is done, say, moving"""
-
-    def __init__(self):
-        self._prev: Optional[SubData] = None
-
-    __call__: HandlerType
-
-    async def __call__(self, sd: SubData):
-        print('uv', sd)
-        prev, self._prev = self._prev, sd
-        with suppress(AttributeError):
-            return prev.data.message.value == sd.data.message.value
-
-
 async def _handle_head_movement(yaw):
     ecb = EventCallback(UnchangedValue())
-    sub_ec = SubEC.from_sub_ec(SubType.actuator_position, Actuator.yaw.event_condition)
     await api.movement.move_head(yaw=yaw)
-    async with api.ws.sub_unsub(sub_ec, ecb, 400):
+    async with api.ws.sub_unsub(Actuator.yaw.sub, ecb, 400):
         await ecb.wait()
 
 
