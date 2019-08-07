@@ -27,11 +27,8 @@ class Person(NamedTuple):
 
     async def on_find(self, api: MistyAPI):
         await api.movement.halt()
-        eh = EventCallback(wait_one)
         print('first', arrow.utcnow())
-        async with api.ws.sub_unsub(SubType.audio_play_complete, eh):
-            await api.audio.play(self.target_acquired_phrase)
-            await eh.wait()
+        await api.audio.play(self.target_acquired_phrase, blocking=True)
         print('first done', arrow.utcnow())
 
         print('second', arrow.utcnow())

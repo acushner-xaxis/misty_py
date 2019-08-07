@@ -2,9 +2,9 @@
 - [ ] store arm/head/etc positions and be able to increment them
 - [ ] theme songs associated with faces
 - [ ] laser pointer ala terminator
+    - [ ] say "activate kill mode"
+- [ ] ask misty where certain people are (based on calendar) and have her guide you to them
 - [ ] misty spouts kaizen phrases all day
-- [ ] emotions/moods
-- [ ] get misty to dance
 
 
 ##### interaction
@@ -54,6 +54,4 @@
 - [ ] video game chars
 - [ ] misty as security guard for our stuff (hat tip: josh)
 - [ ] integrate with homekit?
-- [ ] dialog flow from google
-
 
