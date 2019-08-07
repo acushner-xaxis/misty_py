@@ -94,16 +94,17 @@ class ImageAPI(PartialAPI):
         res = self.saved_images = json_obj((i.name, i) for i in images)
         return res
 
-    async def get(self, file_name: str, *, as_base64: bool = False, display=True) -> bytes:
+    async def get(self, file_name: str, *, as_base64: bool = False, display=True) -> BytesIO:
         """
         default to using binary data - decoding base64 is annoying
         default to displaying the image as well
         """
         cor = self._get_j if as_base64 else self._get
         res = await cor('images', FileName=file_name, Base64=as_base64)
+        res = BytesIO(res.content)
         if display:
-            PImage.open(BytesIO(res.content))
-        return res.content
+            PImage.open(res)
+        return res
 
     async def upload(self, file_name: str, width: Optional[int] = None, height: Optional[int] = None,
                      *, apply_immediately: bool = False, overwrite_existing: bool = True):
@@ -116,7 +117,7 @@ class ImageAPI(PartialAPI):
         """
         file_name: name on device
         time_out_secs: no idea what this does. seems to have no effect
-        alpha: should be between 0 (don't show at all) to 1 (full brightness)
+        alpha: should be between 0 (totally transparent) and 1 (totally opaque), inclusive
         """
         return await self._post('images/display', dict(FileName=file_name, TimeOutSeconds=time_out_secs, Alpha=alpha))
 
@@ -573,8 +574,8 @@ class SkillAPI(PartialAPI):
         return await self._get_j('skills')
 
     async def run(self, skill_name_or_uid, method: Optional[str] = None):
-        return await self._post('skills/start',
-                                json_obj.from_not_none(Skill=skill_name_or_uid, Method=method)).json()['result']
+        return (await self._post('skills/start',
+                                 json_obj.from_not_none(Skill=skill_name_or_uid, Method=method))).json()['result']
 
     async def save(self, zip_file_name: str, *, apply_immediately: bool = False, overwrite_existing: bool = True):
         await self._post('skills', dict(File=zip_file_name, ImmediatelyApply=apply_immediately,
