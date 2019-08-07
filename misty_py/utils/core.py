@@ -1,7 +1,7 @@
 import asyncio
 import json
 from abc import abstractmethod, ABC
-from enum import IntFlag
+from enum import IntFlag, Enum
 from functools import wraps
 from pathlib import Path
 from typing import NamedTuple, Dict, Optional, Union, List, Set, Any, Coroutine
@@ -27,11 +27,16 @@ def asyncpartial(coro, *args, **kwargs):
 
 
 class SlamStatus(IntFlag):
-    idle = 1
+    streaming = 1
     exploring = 2
     tracking = 4
     recording = 8
     resetting = 16
+    paused = 32
+
+    @property
+    def title(self):
+        return self.name.title()
 
 
 class Coords(NamedTuple):
@@ -40,6 +45,10 @@ class Coords(NamedTuple):
 
     def __str__(self):
         return f'{self.x}:{self.y}'
+
+    @staticmethod
+    def format(*coords: 'Coords'):
+        return ','.join(map(str, coords))
 
 
 def _denormalize(obj) -> Dict[str, float]:
@@ -226,6 +235,8 @@ def encode_data(filename_or_bytes: Union[str, bytes]) -> str:
 
 def decode_data(data_base64) -> BytesIO:
     """decode base64 data"""
+    if isinstance(data_base64, BytesIO):
+        return data_base64
     res = data_base64
     if isinstance(res, str):
         res = res.encode()

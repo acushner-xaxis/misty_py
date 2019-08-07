@@ -129,18 +129,23 @@ class EventCallback:
     this class will `set` the event indicating to any waiters that they can proceed
     """
 
-    def __init__(self, handler: HandlerType):
+    def __init__(self, handler: HandlerType, timeout_secs: Optional[float] = None):
         self._handler = handler
         self._ready = asyncio.Event()
+        self._timeout_secs = timeout_secs
+        self._start = None
 
     async def __call__(self, sd: SubData):
         if await self._handler(sd):
             self._ready.set()
 
-    async def wait(self):
-        await self._ready.wait()
+    def __await__(self):
+        return self.wait().__await__()
 
-    def reset(self):
+    async def wait(self):
+        return await asyncio.wait_for(self._ready.wait(), self._timeout_secs)
+
+    def clear(self):
         self._ready.clear()
 
 

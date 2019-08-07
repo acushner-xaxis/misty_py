@@ -59,30 +59,22 @@ class UnchangedValue:
 
     def __init__(self):
         self._prev: Optional[SubData] = None
-        self._ready = asyncio.Event()
 
     __call__: HandlerType
 
     async def __call__(self, sd: SubData):
         print('uv', sd)
-        if self._prev is None:
-            self._prev = sd
-            return
         prev, self._prev = self._prev, sd
         with suppress(AttributeError):
-            if prev.data.message.value == sd.data.message.value:
-                self._ready.set()
-
-    async def wait(self):
-        await self._ready.wait()
+            return prev.data.message.value == sd.data.message.value
 
 
 async def _handle_head_movement(yaw):
-    uv = UnchangedValue()
+    ecb = EventCallback(UnchangedValue())
     sub_ec = SubEC.from_sub_ec(SubType.actuator_position, Actuator.yaw.event_condition)
     await api.movement.move_head(yaw=yaw)
-    async with api.ws.sub_unsub(sub_ec, uv, 400):
-        await uv.wait()
+    async with api.ws.sub_unsub(sub_ec, ecb, 400):
+        await ecb.wait()
 
 
 async def _handle_face_recognition(sd: SubData):

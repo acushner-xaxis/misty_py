@@ -2,6 +2,7 @@
 - [x] `ImageAPI(self)`
     - unable to get [save image - image file](https://docs.mistyrobotics.com/misty-ii/reference/rest/#saveimage-image-file-)
     to work and had to go with [save image - data string](https://docs.mistyrobotics.com/misty-ii/reference/rest/#saveimage-data-string-)
+    - missing validation on inputs (e.g. alpha can be set to anything)
 - [x] `AudioAPI(self)`
 - [x] `FaceAPI(self)`
 - [x] `MovementAPI(self)`
@@ -10,6 +11,9 @@
     - `drive_track` with negative values does nothing
 - [x] `SystemAPI(self)`
     - `help` on something like `http://192.168.86.249/api/help?command=i_am_not_real` just hangs forever
+    - when not plugged in, battery charge info issues:
+        - battery get call shows 0% but misty's still completely on
+        - battery subscription also shows 0%
 - [ ] `NavigationAPI(self)`
 - [ ] `SkillAPI(self)`
 
@@ -31,7 +35,11 @@
 - [x] `touch_sensor = 'TouchSensor'`
 - [x] `world_state = 'WorldState'`
  
-- [ ] slam streaming
+- [ ] SLAM
+    - [ ] streaming
+        - streaming doesn't work. 
+    - [x] mapping
+    - [ ] tracking
  
 ##### misc:
  
@@ -40,7 +48,7 @@
  - is there a way to play video?
  - easy way to center images?
  - what about playing simple games on the display?
-    - or even streaming video of other games?
+    - or even streaming video?
     - could be used as a way to watch stuff online
  - can we provide our own, custom key phrases?
  - no ability to upload multiple files concurrently

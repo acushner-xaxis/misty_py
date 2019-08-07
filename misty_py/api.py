@@ -4,6 +4,8 @@ import asyncio
 import inspect
 import textwrap
 import os
+from abc import ABC, abstractmethod
+from base64 import b64encode
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
 from typing import Dict, Optional, Set, NamedTuple
@@ -37,18 +39,10 @@ class PartialAPI(RestAPI):
 
     def __init__(self, api: MistyAPI):
         self.api = api
-        self._ready_holder: asyncio.Event = None
 
     def __init_subclass__(cls, **kwargs):
         if not cls.__name__.startswith('_'):
             cls._registered_classes.add(cls)
-
-    @property
-    def _ready(self):
-        """#TODO: do we need this here or can it just happen in regular, non-async __init__s"""
-        if self._ready_holder is None:
-            self._ready_holder = asyncio.Event()
-        return self._ready_holder
 
     async def _get(self, endpoint, *, _headers=None, **params):
         return await self.api._get(endpoint, _headers=_headers, **params)
@@ -216,7 +210,7 @@ class AudioAPI(PartialAPI):
 
             event = EventCallback(_wait_one)
             async with self.api.ws.sub_unsub(SubType.audio_play_complete, event):
-                await event.wait()
+                await event
 
     async def play(self, file_name: str, volume: int = 100, how_long_secs: Optional[int] = None, *, blocking=False):
         """play for how long you want to"""
@@ -484,42 +478,79 @@ class SystemAPI(PartialAPI):
         return await self._post('reboot', json_obj(Core=core, SensoryServices=sensory_services))
 
 
-class _SlamHelper(PartialAPI):
+class _SlamHelper(PartialAPI, ABC):
     """
     context manager to handle initializing and stopping slam functionality
 
     used by the NavigationAPI
     """
 
-    def __init__(self, api: MistyAPI, endpoint: str):
+    def __init__(self, api: MistyAPI, endpoint: str, timeout_secs=15.0):
         super().__init__(api)
         self._endpoint = endpoint
         self._num_current_slam_streams = 0
+        self._ready_cb = EventCallback(self._sensor_ready, timeout_secs)
+        self._off_cb = EventCallback(self._sensor_off, timeout_secs)
 
-    async def _handler(self, sub_data: SubData):
-        """set the `_ready` event after the sensors are ready"""
-        # TODO: check if these are the same for all the slam types
-        if sub_data.data.message.slamStatus.runMode == 'Exploring':
-            self._ready.set()
+    @abstractmethod
+    async def _sensor_ready(self, sd: SubData):
+        """handler func that indicates when the sensor is ready"""
+
+    async def _sensor_off(self, sd: SubData):
+        """handler func that indicates when the sensor off"""
+        return not await self._sensor_ready(sd)
 
     async def start(self):
+        self._ready_cb.clear()
         await self._post(f'slam/{self._endpoint}/start')
-        async with self.api.ws.sub_unsub(SubType.self_state, self._handler):
-            await self._ready.wait()
 
     async def stop(self):
-        self._ready.clear()
+        self._off_cb.clear()
         return await self._post(f'slam/{self._endpoint}/stop')
+
+    async def reset(self):
+        return await self._post('slam/reset')
 
     async def __aenter__(self):
         self._num_current_slam_streams += 1
         if self._num_current_slam_streams == 1:
             await self.start()
+            async with self.api.ws.sub_unsub(SubType.self_state, self._ready_cb):
+                await self._ready_cb
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         self._num_current_slam_streams -= 1
         if self._num_current_slam_streams == 0:
             await self.stop()
+
+
+class _SlamMapping(_SlamHelper):
+    def __init__(self, api: MistyAPI):
+        super().__init__(api, 'map')
+
+    async def _sensor_ready(self, sd: SubData):
+        ss = sd.data.message.slamStatus
+        return (ss.runMode == 'Exploring'
+                and all(v in ss.statusList for v in 'Ready Exploring HasPose Streaming'.split()))
+
+
+class _SlamStreaming(_SlamHelper):
+    def __init__(self, api: MistyAPI):
+        super().__init__(api, 'streaming')
+
+    async def _sensor_ready(self, sd: SubData):
+        ss = sd.data.message.slamStatus
+        return all(v in ss.statusList for v in 'Ready Streaming'.split())
+
+
+class _SlamTracking(_SlamHelper):
+    def __init__(self, api: MistyAPI):
+        super().__init__(api, 'track')
+
+    async def _sensor_ready(self, sd: SubData):
+        ss = sd.data.message.slamStatus
+        return (ss.runMode == 'Tracking'
+                and all(v in ss.statusList for v in ('Ready', 'Tracking', 'HasPose', 'Streaming')))
 
 
 class NavigationAPI(PartialAPI):
@@ -531,9 +562,9 @@ class NavigationAPI(PartialAPI):
 
     def __init__(self, api: MistyAPI):
         super().__init__(api)
-        self.slam_streaming = _SlamHelper(api, 'streaming')
-        self.slam_mapping = _SlamHelper(api, 'map')
-        self.slam_tracking = _SlamHelper(api, 'track')
+        self.slam_streaming = _SlamStreaming(api)
+        self.slam_mapping = _SlamMapping(api)
+        self.slam_tracking = _SlamTracking(api)
 
     async def reset_slam(self):
         return await self._post('slam/reset')
@@ -542,27 +573,26 @@ class NavigationAPI(PartialAPI):
         async with self.slam_streaming:
             return await self._get_j('cameras/depth')
 
-    async def take_fisheye_pic(self):
+    async def take_fisheye_pic(self) -> BytesIO:
         async with self.slam_streaming:
-            return await self._get_j('cameras/fisheye')
+            res = await self._get('cameras/fisheye')
+            return BytesIO(res.content)
 
     async def get_map(self):
-        async with self.slam_mapping:
-            return await self._get_j('slam/map')
+        return await self._get('slam/map')
 
-    @staticmethod
-    def _format_coords(*coords: Coords):
-        return ','.join(map(str, coords))
+    async def map(self):
+        """# TODO: implement algo for misty to move around slowly mapping her environment"""
 
     async def drive_to_coordinates(self, coords: Coords):
         async with self.slam_tracking:
-            await self._post('drive/coordinates', dict(Destination=self._format_coords(coords)))
+            await self._post('drive/coordinates', dict(Destination=Coords.format(coords)))
 
     async def follow_path(self, *coords: Coords):
         async with self.slam_tracking:
             if len(coords) == 1:
                 return await self.drive_to_coordinates(*coords)
-            return await self._post('drive/path', dict(Path=self._format_coords(*coords)))
+            return await self._post('drive/path', dict(Path=Coords.format(*coords)))
 
 
 class SkillAPI(PartialAPI):
