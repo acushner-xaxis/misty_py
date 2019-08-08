@@ -6,18 +6,17 @@
 - [x] `AudioAPI(self)`
 - [x] `FaceAPI(self)`
 - [x] `MovementAPI(self)`
-    - `drive_arc` is busted (i know it's in alpha, and it's really funny)
-    - didn't test `drive_heading`
-    - `drive_track` with negative values does nothing
-    - `angular_vel_pct` is busted in general
+    - `angular_vel_pct` is busted
         - misty keeps speeding up endlessly from whatever value you initially set
+        - problem with the IMU not initializing
 - [x] `SystemAPI(self)`
     - `help` on something like `http://192.168.86.249/api/help?command=i_am_not_real` just hangs forever
     - when not plugged in, battery charge info issues:
         - battery get call shows 0% but misty's still completely on
         - battery subscription also shows 0%
-- [x] `NavigationAPI(self)`
-    - still need to get mapping and tracking working, but it's tough
+- [ ] `NavigationAPI(self)`
+    - able to acquire a map, but have no idea what to do with it
+    - have not attempted tracking
 - [ ] `SkillAPI(self)`
 
 
@@ -25,7 +24,8 @@
 
 - [x] `actuator_position = 'ActuatorPosition'`
 - [x] `audio_play_complete = 'AudioPlayComplete'`
-- [ ] `battery_charge = 'BatteryCharge'`
+- [x] `battery_charge = 'BatteryCharge'`
+    - when unplugged, battery charge shows as 0%
 - [x] `bump_sensor = 'BumpSensor'`
 - [x] `drive_encoders = 'DriveEncoders'`
 - [x] `face_recognition = 'FaceRecognition'`

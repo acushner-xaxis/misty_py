@@ -11,8 +11,8 @@ from base64 import b64decode, b64encode
 from io import BytesIO
 
 __all__ = (
-    'SlamStatus', 'Coords', 'InstanceCache', 'ArmSettings', 'HeadSettings', 'json_obj', 'RestAPI', 'JSONObjOrObjs',
-    'decode_img', 'save_data_locally', 'generate_upload_payload', 'delay', 'MISTY_URL', 'asyncpartial', 'classproperty'
+    'Coords', 'InstanceCache', 'ArmSettings', 'HeadSettings', 'json_obj', 'RestAPI', 'JSONObjOrObjs', 'decode_img',
+    'save_data_locally', 'generate_upload_payload', 'delay', 'MISTY_URL', 'asyncpartial', 'classproperty'
 )
 
 MISTY_URL = 'http://192.168.86.249'
@@ -32,19 +32,6 @@ def asyncpartial(coro, *args, **kwargs):
         await coro(*(args + a), **{**kwargs, **kw})
 
     return wrapped
-
-
-class SlamStatus(IntFlag):
-    streaming = 1
-    exploring = 2
-    tracking = 4
-    recording = 8
-    resetting = 16
-    paused = 32
-
-    @property
-    def title(self):
-        return self.name.title()
 
 
 class Coords(NamedTuple):
@@ -241,11 +228,11 @@ def encode_data(filename_or_bytes: Union[str, bytes]) -> str:
     return b64encode(data).decode()
 
 
-def decode_data(data_base64) -> BytesIO:
+def decode_data(data: Union[str, bytes, BytesIO]) -> BytesIO:
     """decode base64 data"""
-    if isinstance(data_base64, BytesIO):
-        return data_base64
-    res = data_base64
+    if isinstance(data, BytesIO):
+        return data
+    res = data
     if isinstance(res, str):
         res = res.encode()
     if b',' in res:

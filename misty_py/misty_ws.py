@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 from asyncio import create_task
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from itertools import count
-from typing import Dict, NamedTuple, Union
+from typing import Dict, NamedTuple, Union, Optional
 
 import websockets
 
@@ -19,6 +19,48 @@ class TaskInfo(NamedTuple):
     """info about a running task and its associated websocket"""
     task: asyncio.Task
     ws: websockets.WebSocketClientProtocol
+
+
+class EventCallback:
+    """
+    a callback combined with an event
+
+    if the `handler` returns a truthy value,
+    this class will `set` the event indicating to any waiters that they can proceed
+    """
+
+    def __init__(self, handler: HandlerType, timeout_secs: Optional[float] = None):
+        self._handler = handler
+        self._ready = asyncio.Event()
+        self._timeout_secs = timeout_secs
+        self._start = None
+
+    async def wait(self):
+        return await asyncio.wait_for(self._ready.wait(), self._timeout_secs)
+
+    def clear(self):
+        self._ready.clear()
+
+    async def __call__(self, sp: SubPayload):
+        if await self._handler(sp):
+            self._ready.set()
+
+    def __await__(self):
+        return self.wait().__await__()
+
+
+class UnchangedValue:
+    """useful for determining when something is done, say, moving"""
+
+    def __init__(self):
+        self._prev: Optional[SubPayload] = None
+
+    __call__: HandlerType
+
+    async def __call__(self, sp: SubPayload):
+        prev, self._prev = self._prev, sp
+        with suppress(AttributeError):
+            return prev.data.message.value == sp.data.message.value
 
 
 async def debug_handler(sp: SubPayload):
@@ -61,12 +103,7 @@ class MistyWS(metaclass=InstanceCache):
         ws = await websockets.connect(self._endpoint)
         self._tasks[sub_id] = TaskInfo(asyncio.create_task(self._handle(ws, handler, sub_id)), ws)
 
-        payload = json_obj(Operation='subscribe', Type=sub.sub.value, DebounceMS=debounce_ms,
-                           EventName=sub_id.event_name)
-        if sub_id.type.ec:
-            payload.EventConditions = [ec.json for ec in sub_id.type.ec]
-        if sub_id.type.return_prop:
-            payload.ReturnProperty = sub_id.type.return_prop
+        payload = sub_id.to_json(debounce_ms)
         print(payload)
         await ws.send(payload.json_str)
 
@@ -105,7 +142,8 @@ class MistyWS(metaclass=InstanceCache):
         return await asyncio.gather(*coros)
 
     @asynccontextmanager
-    async def sub_unsub(self, sub: Union[SubType, LLSubType, Sub], handler: HandlerType, debounce_ms: int = 250) -> SubId:
+    async def sub_unsub(self, sub: Union[SubType, LLSubType, Sub], handler: HandlerType,
+                        debounce_ms: int = 250) -> SubId:
         """
         context manager to subscribe to an event, wait for something, and, when the exec block's done, unsubscribe
         useful, e.g., for making things blocking

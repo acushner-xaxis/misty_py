@@ -7,7 +7,8 @@ from pathlib import Path
 import arrow
 
 from misty_py.api import MistyAPI
-from misty_py.subscriptions import Actuator, UnchangedValue, EventCallback
+from misty_py.subscriptions import Actuator
+from misty_py.misty_ws import EventCallback, UnchangedValue
 from misty_py.utils import MISTY_URL
 
 __author__ = 'acushner'
@@ -34,11 +35,11 @@ async def dump_debug_info():
     with open(l, 'w') as f:
         f.write(t)
 
-    zip_path = path + 'misty.zip'
+    z = path + 'misty.zip'
     with suppress(FileNotFoundError):
-        os.remove(zip_path)
-    os.system(f'zip {zip_path} {di} {l}')
-    print('created', zip_path)
+        os.remove(z)
+    os.system(f'zip {z} {di} {l}')
+    print('created', z)
 
 
 def search():

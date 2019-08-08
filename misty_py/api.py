@@ -2,22 +2,21 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import textwrap
 import os
-from abc import ABC, abstractmethod, ABCMeta
-from base64 import b64encode
+import textwrap
+from abc import ABC, abstractmethod
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
-from typing import Dict, Optional, Set, NamedTuple
-
-from PIL import Image as PImage
 from io import BytesIO
+from typing import Dict, Optional, Set, NamedTuple
 
 import arrow
 import requests
+from PIL import Image as PImage
 
+from misty_py.subscriptions import SubType, SubPayload, Sub
+from misty_py.misty_ws import EventCallback
 from .misty_ws import MistyWS
-from misty_py.subscriptions import SubType, SubPayload, EventCallback, Sub
 from .utils import *
 
 WIDTH = 480
@@ -88,17 +87,12 @@ class ImageAPI(PartialAPI):
         res = self.saved_images = json_obj((i.name, i) for i in images)
         return res
 
-    async def get(self, file_name: str, *, as_base64: bool = False, display=True) -> BytesIO:
+    async def get(self, file_name: str) -> BytesIO:
         """
-        default to using binary data - decoding base64 is annoying
-        default to displaying the image as well
+        get binary data image data from misty
         """
-        cor = self._get_j if as_base64 else self._get
-        res = await cor('images', FileName=file_name, Base64=as_base64)
-        res = BytesIO(res.content)
-        if display:
-            PImage.open(res)
-        return res
+        res = await self._get('images', FileName=file_name, Base64=False)
+        return BytesIO(res.content)
 
     async def upload(self, file_name: str, width: Optional[int] = None, height: Optional[int] = None,
                      *, apply_immediately: bool = False, overwrite_existing: bool = True):
@@ -118,7 +112,8 @@ class ImageAPI(PartialAPI):
     async def set_led(self, rgb: RGB = RGB(0, 0, 0)):
         """
         change color of torso's led
-        use `RGB(0, 0, 0)` to turn led off
+
+        default to turning led off
         """
         rgb.validate()
         return await self._post('led', rgb.json)
@@ -492,22 +487,16 @@ class _SlamHelper(PartialAPI, ABC):
         self._endpoint = endpoint
         self._num_current_slam_streams = 0
         self._ready_cb = EventCallback(self._sensor_ready, timeout_secs)
-        self._off_cb = EventCallback(self._sensor_off, timeout_secs)
 
     @abstractmethod
     async def _sensor_ready(self, sp: SubPayload):
         """handler func that indicates when the sensor is ready"""
-
-    async def _sensor_off(self, sp: SubPayload):
-        """handler func that indicates when the sensor off"""
-        return not await self._sensor_ready(sp)
 
     async def start(self):
         self._ready_cb.clear()
         await self._post(f'slam/{self._endpoint}/start')
 
     async def stop(self):
-        self._off_cb.clear()
         return await self._post(f'slam/{self._endpoint}/stop')
 
     async def reset(self):

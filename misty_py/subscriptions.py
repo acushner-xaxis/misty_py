@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import asyncio
 from abc import abstractmethod
-from contextlib import suppress
 from enum import Enum
 from itertools import count
-from typing import NamedTuple, Set, Optional, Callable, Awaitable, FrozenSet, Generator, Dict, List, Any
+from typing import NamedTuple, Optional, Callable, Awaitable, FrozenSet, Dict, Any
 
 import arrow
 
@@ -19,7 +17,7 @@ HandlerType = Callable[['SubPayload'], Awaitable[Any]]
 
 class SubType(Enum):
     """
-    high-level subscription types
+    higher-level subscription types
 
     enum of broader subscriptions misty will accept
     these can be further refined with `EventCondition`s
@@ -71,7 +69,7 @@ _high_to_low_level_sub_map: Dict[SubType, 'LLSubType'] = {}
 
 class LLSubType(Enum):
     """
-    lower level `SubType`s.
+    lower-level `SubType`s.
     represent more granular subscriptions on misty
 
     some `SubType`s, like `actuator_position`, require that you add certain `EventCondition`s
@@ -84,7 +82,7 @@ class LLSubType(Enum):
     @abstractmethod
     @classproperty
     def _sub_type(cls) -> SubType:
-        """fill in with the associated subscription type"""
+        """return the higher-level subscription type associated with each class"""
 
     @property
     def _event_condition(self) -> EventCondition:
@@ -190,7 +188,7 @@ class Sub(NamedTuple):
     - any `EventCondition`s you might need (including ones represented by `LLSubType` enums)
     - a return property, which pares down the amount of data you get back
     """
-    sub: SubType
+    sub_type: SubType
     ec: FrozenSet[EventCondition] = frozenset()
     return_prop: Optional[str] = None
 
@@ -199,7 +197,7 @@ class Sub(NamedTuple):
         return cls(sub, frozenset(ec), return_prop)
 
     def __str__(self):
-        res = [self.sub.value]
+        res = [self.sub_type.value]
         if self.ec:
             res.append('|'.join(map(str, self.ec)))
         if self.return_prop:
@@ -223,6 +221,15 @@ class SubId(NamedTuple):
     def event_name(self) -> str:
         return f'{str(self.type)}-{self.id:04}'
 
+    def to_json(self, debounce_ms) -> json_obj:
+        payload = json_obj(Operation='subscribe', Type=self.type.sub_type.value, DebounceMS=debounce_ms,
+                           EventName=self.event_name)
+        if self.type.ec:
+            payload.EventConditions = [ec.json for ec in self.type.ec]
+        if self.type.return_prop:
+            payload.ReturnProperty = self.type.return_prop
+        return payload
+
     async def unsubscribe(self):
         return await self.api.ws.unsubscribe(self)
 
@@ -236,51 +243,6 @@ class SubPayload(NamedTuple):
     @classmethod
     def from_data(cls, o: json_obj, sid: SubId):
         return cls(arrow.now(), o, sid)
-
-
-class EventCallback:
-    """
-    a callback combined with an event
-
-    if the `handler` returns a truthy value,
-    this class will `set` the event indicating to any waiters that they can proceed
-    """
-
-    def __init__(self, handler: HandlerType, timeout_secs: Optional[float] = None):
-        self._handler = handler
-        self._ready = asyncio.Event()
-        self._timeout_secs = timeout_secs
-        self._start = None
-
-    async def wait(self):
-        return await asyncio.wait_for(self._ready.wait(), self._timeout_secs)
-
-    def clear(self):
-        self._ready.clear()
-
-    async def __call__(self, sp: SubPayload):
-        if await self._handler(sp):
-            self._ready.set()
-
-    def __await__(self):
-        return self.wait().__await__()
-
-
-class UnchangedValue:
-    """useful for determining when something is done, say, moving"""
-
-    def __init__(self):
-        self._prev: Optional[SubPayload] = None
-
-    __call__: HandlerType
-
-    async def __call__(self, sp: SubPayload):
-        prev, self._prev = self._prev, sp
-        with suppress(AttributeError):
-            return prev.data.message.value == sp.data.message.value
-
-
-print(_high_to_low_level_sub_map)
 
 
 def __main():

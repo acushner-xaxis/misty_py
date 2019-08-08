@@ -4,7 +4,8 @@ from typing import NamedTuple, Dict
 import arrow
 
 from misty_py.api import MistyAPI, MISTY_URL
-from misty_py.subscriptions import SubPayload, SubType, Actuator, Sub, EventCallback, UnchangedValue
+from misty_py.subscriptions import SubPayload, SubType, Actuator, Sub
+from misty_py.misty_ws import EventCallback, UnchangedValue
 
 __author__ = 'acushner'
 
@@ -57,7 +58,7 @@ async def _handle_head_movement(yaw):
     ecb = EventCallback(UnchangedValue())
     await api.movement.move_head(yaw=yaw)
     async with api.ws.sub_unsub(Actuator.yaw.sub, ecb, 400):
-        await ecb.wait()
+        await ecb
 
 
 async def _handle_face_recognition(sp: SubPayload):
@@ -83,7 +84,7 @@ async def run():
     await asyncio.sleep(3)
     face_handler = await _init_face_recognition()
     await _handle_head_movement(200)
-    await face_handler.wait()
+    await face_handler
     await api.faces.stop_recognition()
     print('done')
 
