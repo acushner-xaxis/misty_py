@@ -17,7 +17,7 @@ import arrow
 import requests
 
 from .misty_ws import MistyWS
-from misty_py.subscriptions import SubType, SubData, EventCallback
+from misty_py.subscriptions import SubType, SubPayload, EventCallback, Sub
 from .utils import *
 
 WIDTH = 480
@@ -205,6 +205,7 @@ class AudioAPI(PartialAPI):
             else:
                 asyncio.create_task(coro)
         elif blocking:
+            # TODO: use metadata from audio_play_complete to make sure the correct sound is ending
             async def _wait_one(_):
                 return True
 
@@ -354,7 +355,8 @@ class MovementAPI(PartialAPI):
         if payload:
             return await self._post('arms/set', payload)
 
-    async def move_head(self, pitch: Optional[float] = None, roll: Optional[float] = None, yaw: Optional[float] = None):
+    async def move_head(self, pitch: Optional[float] = None, roll: Optional[float] = None, yaw: Optional[float] = None,
+                        velocity: Optional[float] = None):
         """
         all vals in range [-100, 100]
 
@@ -363,7 +365,7 @@ class MovementAPI(PartialAPI):
         yaw: turn left and right
         velocity: how quickly
         """
-        return await self._post('head', HeadSettings(pitch, roll, yaw, 1).json)
+        return await self._post('head', HeadSettings(pitch, roll, yaw, velocity).json)
 
     async def stop(self, *, everything=False):
         """
@@ -493,12 +495,12 @@ class _SlamHelper(PartialAPI, ABC):
         self._off_cb = EventCallback(self._sensor_off, timeout_secs)
 
     @abstractmethod
-    async def _sensor_ready(self, sd: SubData):
+    async def _sensor_ready(self, sp: SubPayload):
         """handler func that indicates when the sensor is ready"""
 
-    async def _sensor_off(self, sd: SubData):
+    async def _sensor_off(self, sp: SubPayload):
         """handler func that indicates when the sensor off"""
-        return not await self._sensor_ready(sd)
+        return not await self._sensor_ready(sp)
 
     async def start(self):
         self._ready_cb.clear()
@@ -528,8 +530,8 @@ class _SlamMapping(_SlamHelper):
     def __init__(self, api: MistyAPI):
         super().__init__(api, 'map')
 
-    async def _sensor_ready(self, sd: SubData):
-        ss = sd.data.message.slamStatus
+    async def _sensor_ready(self, sp: SubPayload):
+        ss = sp.data.message.slamStatus
         return (ss.runMode == 'Exploring'
                 and all(v in ss.statusList for v in 'Ready Exploring HasPose Streaming'.split()))
 
@@ -538,8 +540,8 @@ class _SlamStreaming(_SlamHelper):
     def __init__(self, api: MistyAPI):
         super().__init__(api, 'streaming')
 
-    async def _sensor_ready(self, sd: SubData):
-        ss = sd.data.message.slamStatus
+    async def _sensor_ready(self, sp: SubPayload):
+        ss = sp.data.message.slamStatus
         return all(v in ss.statusList for v in 'Ready Streaming'.split())
 
 
@@ -547,8 +549,8 @@ class _SlamTracking(_SlamHelper):
     def __init__(self, api: MistyAPI):
         super().__init__(api, 'track')
 
-    async def _sensor_ready(self, sd: SubData):
-        ss = sd.data.message.slamStatus
+    async def _sensor_ready(self, sp: SubPayload):
+        ss = sp.data.message.slamStatus
         return (ss.runMode == 'Tracking'
                 and all(v in ss.statusList for v in ('Ready', 'Tracking', 'HasPose', 'Streaming')))
 
@@ -684,8 +686,7 @@ class MistyAPI(RestAPI):
         # SUBSCRIPTION DATA - store most recent subscription info here
         # ==============================================================================================================
 
-        self.subscription_data: Dict[SubType, SubData] = dict.fromkeys(SubType,
-                                                                       SubData(arrow.Arrow.min, json_obj(), None))
+        self.subscription_data: Dict[Sub, SubPayload] = {}
 
     @staticmethod
     def _init_ip(ip):

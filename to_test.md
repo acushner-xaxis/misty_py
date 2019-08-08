@@ -59,6 +59,7 @@
     - current positioning for arms
     - current image displayed
  - increase file size for audio files?
+ - how do you affect mental state?
  
 ##### TODO:
  

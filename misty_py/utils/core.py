@@ -12,10 +12,18 @@ from io import BytesIO
 
 __all__ = (
     'SlamStatus', 'Coords', 'InstanceCache', 'ArmSettings', 'HeadSettings', 'json_obj', 'RestAPI', 'JSONObjOrObjs',
-    'decode_img', 'save_data_locally', 'generate_upload_payload', 'delay', 'MISTY_URL', 'asyncpartial'
+    'decode_img', 'save_data_locally', 'generate_upload_payload', 'delay', 'MISTY_URL', 'asyncpartial', 'classproperty'
 )
 
 MISTY_URL = 'http://192.168.86.249'
+
+
+class classproperty:
+    def __init__(self, f):
+        self.f = f
+
+    def __get__(self, instance, cls):
+        return self.f(cls)
 
 
 def asyncpartial(coro, *args, **kwargs):
@@ -95,7 +103,7 @@ class HeadSettings(NamedTuple):
     yaw: Optional[float] = None
     velocity: Optional[float] = None
 
-    _var_range = dict(pitch=-10, roll=50, yaw=-100, velocity=10)
+    _var_range = dict(pitch=-10, roll=50, yaw=-100, velocity=100)
 
     @property
     def json(self) -> Dict[str, float]:

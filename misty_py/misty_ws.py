@@ -8,7 +8,7 @@ from typing import Dict, NamedTuple, Union
 
 import websockets
 
-from misty_py.subscriptions import SubType, SubReq, SubData, HandlerType, SubEC
+from misty_py.subscriptions import SubType, SubReq, SubPayload, HandlerType, Sub, LLSubType
 from .utils import json_obj
 from .utils.core import InstanceCache
 
@@ -21,8 +21,8 @@ class TaskInfo(NamedTuple):
     ws: websockets.WebSocketClientProtocol
 
 
-async def debug_handler(sd: SubData):
-    print(sd)
+async def debug_handler(sp: SubPayload):
+    print(sp)
 
 
 class MistyWS(metaclass=InstanceCache):
@@ -43,24 +43,29 @@ class MistyWS(metaclass=InstanceCache):
     def _next_sub_id(self) -> int:
         return next(self._count)
 
-    async def subscribe(self, sub_ec: Union[SubType, SubEC], handler: HandlerType = debug_handler,
+    async def subscribe(self, sub: Union[SubType, LLSubType, Sub], handler: HandlerType = debug_handler,
                         debounce_ms: int = 250) -> SubReq:
         """
         subscribe to events from misty
 
         handler will be invoked every time an event is received
         """
-        if isinstance(sub_ec, SubType):
-            sub_ec = SubEC.from_sub_ec(sub_ec)
-        sub_req = SubReq(self._next_sub_id(), sub_ec.sub, handler, self.api, sub_ec.ec)
+        if isinstance(sub, SubType):
+            coros = (self.subscribe(s, handler, debounce_ms) for s in sub.lower_level_subs)
+            return await asyncio.gather(*coros)
+        if isinstance(sub, LLSubType):
+            sub = sub.sub
+        sub_req = SubReq.create(sub, self.api)
 
         ws = await websockets.connect(self._endpoint)
         self._tasks[sub_req] = TaskInfo(asyncio.create_task(self._handle(ws, handler, sub_req)), ws)
 
-        payload = json_obj(Operation='subscribe', Type=sub_ec.sub.value, DebounceMS=debounce_ms,
+        payload = json_obj(Operation='subscribe', Type=sub.sub.value, DebounceMS=debounce_ms,
                            EventName=sub_req.event_name)
-        if sub_req.event_conditions:
-            payload.EventConditions = [ec.json for ec in sub_req.event_conditions]
+        if sub_req.type.ec:
+            payload.EventConditions = [ec.json for ec in sub_req.type.ec]
+        if sub_req.type.return_prop:
+            payload.ReturnProperty = sub_req.type.return_prop
         print(payload)
         await ws.send(payload.json_str)
 
@@ -82,11 +87,10 @@ class MistyWS(metaclass=InstanceCache):
             return await asyncio.gather(*coros)
 
         try:
-            ti = self._tasks[sub_req]
+            ti = self._tasks.pop(sub_req)
         except KeyError:
             return False
 
-        del self._tasks[sub_req]
         ti.task.cancel()
 
         payload = json_obj(Operation='unsubscribe', EventName=sub_req.event_name, Message=str(sub_req))
@@ -96,14 +100,14 @@ class MistyWS(metaclass=InstanceCache):
 
     async def unsubscribe_all(self):
         """cancel all active subscriptions"""
-        coros = (self.unsubscribe(si) for si in self._tasks)
+        coros = (sr.unsubscribe() for sr in self._tasks)
         return await asyncio.gather(*coros)
 
     @asynccontextmanager
-    async def sub_unsub(self, sub: Union[SubType, SubEC], handler: HandlerType, debounce_ms: int = 250) -> SubReq:
+    async def sub_unsub(self, sub: Union[SubType, LLSubType, Sub], handler: HandlerType, debounce_ms: int = 250) -> SubReq:
         """
         context manager to subscribe to an event, wait for something, and, when the exec block's done, unsubscribe
-        useful, e.g., for starting up slam sensors and waiting for them to be ready
+        useful, e.g., for making things blocking
         """
         sub_req = await self.subscribe(sub, handler, debounce_ms)
         try:
@@ -122,7 +126,8 @@ class MistyWS(metaclass=InstanceCache):
 
             # skip registration message
             if isinstance(o.message, str):
+                print(o.message)
                 continue
 
-            sd = self.api.subscription_data[sub_req.type] = SubData.from_data(o, sub_req)
-            create_task(handler(sd))
+            sp = self.api.subscription_data[sub_req.type] = SubPayload.from_data(o, sub_req)
+            create_task(handler(sp))

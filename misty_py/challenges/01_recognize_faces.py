@@ -4,7 +4,7 @@ from typing import NamedTuple, Dict
 import arrow
 
 from misty_py.api import MistyAPI, MISTY_URL
-from misty_py.subscriptions import SubData, SubType, Actuator, SubEC, EventCallback, UnchangedValue
+from misty_py.subscriptions import SubPayload, SubType, Actuator, Sub, EventCallback, UnchangedValue
 
 __author__ = 'acushner'
 
@@ -48,8 +48,8 @@ add_person(Person('sweettuse', 'sweettuse_recognized.mp3', 'price_is_right.mp3')
 # ======================================================================================================================
 
 
-async def wait_one(sd: SubData):
-    print('wait_one', sd)
+async def wait_one(sp: SubPayload):
+    print('wait_one', sp)
     return True
 
 
@@ -60,12 +60,12 @@ async def _handle_head_movement(yaw):
         await ecb.wait()
 
 
-async def _handle_face_recognition(sd: SubData):
-    print('face_rec', sd)
-    person = people.pop(sd.data.message.personName, None)
+async def _handle_face_recognition(sp: SubPayload):
+    print('face_rec', sp)
+    person = people.pop(sp.data.message.personName, None)
     if person:
         print('found', person)
-        await sd.sub_req.unsubscribe()
+        await sp.sub_req.unsubscribe()
         await person.on_find(api)
         return True
 

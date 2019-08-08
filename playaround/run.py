@@ -5,7 +5,7 @@ import uvloop
 
 from misty_py.api import MistyAPI
 from misty_py.misty_ws import MistyWS
-from misty_py.subscriptions import SubType, SubReq, SubData
+from misty_py.subscriptions import SubType, SubReq, SubPayload
 from misty_py.utils import json_obj, RGB, HeadSettings
 
 # print(json_obj(dict(a=4)))
@@ -64,8 +64,8 @@ async def cxl_test():
     # await t
 
 
-async def handler(sd: SubData):
-    print(sd)
+async def handler(sp: SubPayload):
+    print(sp)
 
 
 async def c_test():

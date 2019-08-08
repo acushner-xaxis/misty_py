@@ -1,3 +1,4 @@
+import asyncio
 import os
 import random
 from contextlib import suppress
@@ -6,6 +7,7 @@ from pathlib import Path
 import arrow
 
 from misty_py.api import MistyAPI
+from misty_py.subscriptions import Actuator, UnchangedValue, EventCallback
 from misty_py.utils import MISTY_URL
 
 __author__ = 'acushner'
@@ -32,23 +34,33 @@ async def dump_debug_info():
     with open(l, 'w') as f:
         f.write(t)
 
-    zip = path + 'misty.zip'
+    zip_path = path + 'misty.zip'
     with suppress(FileNotFoundError):
-        os.remove(zip)
-    os.system(f'zip {zip} {di} {l}')
-    print('created', zip)
+        os.remove(zip_path)
+    os.system(f'zip {zip_path} {di} {l}')
+    print('created', zip_path)
 
 
 def search():
     """have misty look around and scan her environment"""
 
 
-def nod(yaw=0, n_times=4):
+async def nod(pitch=100, roll=0, yaw=0, velocity=100, n_times=6):
     """have misty nod up and down"""
+    for _ in range(n_times):
+        print(pitch)
+        await api.movement.move_head(pitch=pitch, yaw=yaw, roll=roll, velocity=velocity)
+        await asyncio.sleep(.2)
+        pitch *= -1
 
 
-def shake_head(pitch=0):
-    """have misty shake head left to right"""
+async def shake_head(pitch=20, roll=0, yaw=-40, velocity=100, n_times=6):
+    """have misty shake head left and right"""
+    for _ in range(n_times):
+        print(yaw)
+        await api.movement.move_head(pitch=pitch, yaw=yaw, roll=roll, velocity=velocity)
+        await asyncio.sleep(.3)
+        yaw *= -1
 
 
 def blinky():
