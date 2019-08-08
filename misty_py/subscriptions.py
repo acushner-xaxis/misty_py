@@ -184,6 +184,7 @@ class DriveEncoder(LLSubType):
 class Sub(NamedTuple):
     """
     subscription object representing all the data necessary to make a subscription to misty's websockets
+
     this includes:
     - the higher level `SubType`
     - any `EventCondition`s you might need (including ones represented by `LLSubType` enums)
