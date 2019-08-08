@@ -4,7 +4,7 @@ import asyncio
 import inspect
 import textwrap
 import os
-from abc import ABC, abstractmethod
+from abc import ABC, abstractmethod, ABCMeta
 from base64 import b64encode
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
@@ -142,7 +142,7 @@ class ImageAPI(PartialAPI):
         if height is supplied, so must be width, and vice versa
         if you want to display on the screen, you must provide a filename
 
-        # TODO: better way return data? maybe return a BytesIO instead of the actual base64 values returned
+        # TODO: better way return data? maybe decode the base64 vals and return them?
         """
         self._validate_take_picture(file_name, width, height, show_on_screen)
 
@@ -630,7 +630,6 @@ class SkillAPI(PartialAPI):
 
 # ======================================================================================================================
 
-
 class MistyAPI(RestAPI):
     """
     asyncio-based REST API for the misty II robot
@@ -727,6 +726,12 @@ class MistyAPI(RestAPI):
 
     async def _delete(self, endpoint, json: Optional[dict] = None, *, _headers=None, **params):
         return await self._request('DELETE', endpoint, **params, json=json, _headers=_headers)
+
+    def __eq__(self, other):
+        return self.ip == other.ip
+
+    def __hash__(self):
+        return hash(self.ip)
 
 
 def _run_example():

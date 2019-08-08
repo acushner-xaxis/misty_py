@@ -5,7 +5,7 @@ from abc import abstractmethod
 from contextlib import suppress
 from enum import Enum
 from itertools import count
-from typing import NamedTuple, Set, Optional, Callable, Awaitable, FrozenSet, Generator, Dict, List
+from typing import NamedTuple, Set, Optional, Callable, Awaitable, FrozenSet, Generator, Dict, List, Any
 
 import arrow
 
@@ -14,14 +14,14 @@ from misty_py.utils.core import classproperty
 
 __author__ = 'acushner'
 
-HandlerType = Callable[['SubPayload'], Awaitable[bool]]
+HandlerType = Callable[['SubPayload'], Awaitable[Any]]
 
 
 class SubType(Enum):
     """
     high-level subscription types
 
-    represent broader subscriptions misty will accept
+    enum of broader subscriptions misty will accept
     these can be further refined with `EventCondition`s
     """
     actuator_position = 'ActuatorPosition'
@@ -71,7 +71,8 @@ _high_to_low_level_sub_map: Dict[SubType, 'LLSubType'] = {}
 
 class LLSubType(Enum):
     """
-    lower level `SubType`s. represent more granular subscriptions on misty
+    lower level `SubType`s.
+    represent more granular subscriptions on misty
 
     some `SubType`s, like `actuator_position`, require that you add certain `EventCondition`s
     in order to access the data, and classes that inherit from this represent these lower-level subscriptions
@@ -95,7 +96,7 @@ class LLSubType(Enum):
 
 
 class Touch(LLSubType):
-    # TODO: get abbreviated values for `Touch` from misty
+    # TODO: get abbreviated values for `Touch` from misty?
     """in the `sensorPosition` var"""
 
     chin = 'Chin'
@@ -150,15 +151,16 @@ class Actuator(LLSubType):
 
 
 class IMU(LLSubType):
-    yaw = 'Yaw',
-    pitch = 'Pitch',
-    roll = 'Roll',
-    x_acceleration = 'XAcceleration',
-    y_acceleration = 'YAcceleration',
-    z_acceleration = 'ZAcceleration',
-    pitch_velocity = 'PitchVelocity',
-    roll_velocity = 'RollVelocity',
-    yaw_velocity = 'YawVelocity',
+    """inertial measurement unit"""
+    yaw = 'Yaw'
+    pitch = 'Pitch'
+    roll = 'Roll'
+    x_acceleration = 'XAcceleration'
+    y_acceleration = 'YAcceleration'
+    z_acceleration = 'ZAcceleration'
+    pitch_velocity = 'PitchVelocity'
+    roll_velocity = 'RollVelocity'
+    yaw_velocity = 'YawVelocity'
 
     @classproperty
     def _sub_type(cls) -> SubType:
@@ -204,11 +206,8 @@ class Sub(NamedTuple):
         return ':'.join(res)
 
 
-class SubReq(NamedTuple):
-    """
-    subscription request
-    act as the identifier for subscriptions
-    """
+class SubId(NamedTuple):
+    """subscription identifier"""
     id: int
     type: Sub
     api: 'MistyAPI'
@@ -221,21 +220,21 @@ class SubReq(NamedTuple):
 
     @property
     def event_name(self) -> str:
-        return f'{str(self.type)}_{self.id:04}'
+        return f'{str(self.type)}-{self.id:04}'
 
     async def unsubscribe(self):
         return await self.api.ws.unsubscribe(self)
 
 
 class SubPayload(NamedTuple):
-    """payload from an active subscription with other additional metadata"""
+    """payload from a subscription with additional metadata"""
     time: arrow.Arrow
     data: json_obj
-    sub_req: SubReq
+    sub_id: SubId
 
     @classmethod
-    def from_data(cls, o: json_obj, sr: SubReq):
-        return cls(arrow.now(), o, sr)
+    def from_data(cls, o: json_obj, sid: SubId):
+        return cls(arrow.now(), o, sid)
 
 
 class EventCallback:
@@ -252,18 +251,18 @@ class EventCallback:
         self._timeout_secs = timeout_secs
         self._start = None
 
+    async def wait(self):
+        return await asyncio.wait_for(self._ready.wait(), self._timeout_secs)
+
+    def clear(self):
+        self._ready.clear()
+
     async def __call__(self, sp: SubPayload):
         if await self._handler(sp):
             self._ready.set()
 
     def __await__(self):
         return self.wait().__await__()
-
-    async def wait(self):
-        return await asyncio.wait_for(self._ready.wait(), self._timeout_secs)
-
-    def clear(self):
-        self._ready.clear()
 
 
 class UnchangedValue:

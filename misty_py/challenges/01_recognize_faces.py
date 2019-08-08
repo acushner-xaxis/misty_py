@@ -65,7 +65,7 @@ async def _handle_face_recognition(sp: SubPayload):
     person = people.pop(sp.data.message.personName, None)
     if person:
         print('found', person)
-        await sp.sub_req.unsubscribe()
+        await sp.sub_id.unsubscribe()
         await person.on_find(api)
         return True
 
