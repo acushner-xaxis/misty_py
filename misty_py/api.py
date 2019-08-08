@@ -2,20 +2,21 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import textwrap
 import os
+import textwrap
+from abc import ABC, abstractmethod
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
-from typing import Dict, Optional, Set, NamedTuple
-
-from PIL import Image as PImage
 from io import BytesIO
+from typing import Dict, Optional, Set, NamedTuple
 
 import arrow
 import requests
+from PIL import Image as PImage
 
+from misty_py.subscriptions import SubType, SubPayload, Sub
+from misty_py.misty_ws import EventCallback
 from .misty_ws import MistyWS
-from misty_py.subscriptions import SubType, SubData, EventCallback
 from .utils import *
 
 WIDTH = 480
@@ -37,18 +38,10 @@ class PartialAPI(RestAPI):
 
     def __init__(self, api: MistyAPI):
         self.api = api
-        self._ready_holder: asyncio.Event = None
 
     def __init_subclass__(cls, **kwargs):
         if not cls.__name__.startswith('_'):
             cls._registered_classes.add(cls)
-
-    @property
-    def _ready(self):
-        """#TODO: do we need this here or can it just happen in regular, non-async __init__s"""
-        if self._ready_holder is None:
-            self._ready_holder = asyncio.Event()
-        return self._ready_holder
 
     async def _get(self, endpoint, *, _headers=None, **params):
         return await self.api._get(endpoint, _headers=_headers, **params)
@@ -94,16 +87,12 @@ class ImageAPI(PartialAPI):
         res = self.saved_images = json_obj((i.name, i) for i in images)
         return res
 
-    async def get(self, file_name: str, *, as_base64: bool = False, display=True) -> bytes:
+    async def get(self, file_name: str) -> BytesIO:
         """
-        default to using binary data - decoding base64 is annoying
-        default to displaying the image as well
+        get binary data image data from misty
         """
-        cor = self._get_j if as_base64 else self._get
-        res = await cor('images', FileName=file_name, Base64=as_base64)
-        if display:
-            PImage.open(BytesIO(res.content))
-        return res.content
+        res = await self._get('images', FileName=file_name, Base64=False)
+        return BytesIO(res.content)
 
     async def upload(self, file_name: str, width: Optional[int] = None, height: Optional[int] = None,
                      *, apply_immediately: bool = False, overwrite_existing: bool = True):
@@ -116,14 +105,15 @@ class ImageAPI(PartialAPI):
         """
         file_name: name on device
         time_out_secs: no idea what this does. seems to have no effect
-        alpha: should be between 0 (don't show at all) to 1 (full brightness)
+        alpha: should be between 0 (totally transparent) and 1 (totally opaque), inclusive
         """
         return await self._post('images/display', dict(FileName=file_name, TimeOutSeconds=time_out_secs, Alpha=alpha))
 
     async def set_led(self, rgb: RGB = RGB(0, 0, 0)):
         """
         change color of torso's led
-        use `RGB(0, 0, 0)` to turn led off
+
+        default to turning led off
         """
         rgb.validate()
         return await self._post('led', rgb.json)
@@ -147,7 +137,7 @@ class ImageAPI(PartialAPI):
         if height is supplied, so must be width, and vice versa
         if you want to display on the screen, you must provide a filename
 
-        # TODO: better way return data? maybe return a BytesIO instead of the actual base64 values returned
+        # TODO: better way return data? maybe decode the base64 vals and return them?
         """
         self._validate_take_picture(file_name, width, height, show_on_screen)
 
@@ -210,12 +200,13 @@ class AudioAPI(PartialAPI):
             else:
                 asyncio.create_task(coro)
         elif blocking:
+            # TODO: use metadata from audio_play_complete to make sure the correct sound is ending
             async def _wait_one(_):
                 return True
 
             event = EventCallback(_wait_one)
             async with self.api.ws.sub_unsub(SubType.audio_play_complete, event):
-                await event.wait()
+                await event
 
     async def play(self, file_name: str, volume: int = 100, how_long_secs: Optional[int] = None, *, blocking=False):
         """play for how long you want to"""
@@ -359,7 +350,8 @@ class MovementAPI(PartialAPI):
         if payload:
             return await self._post('arms/set', payload)
 
-    async def move_head(self, pitch: Optional[float] = None, roll: Optional[float] = None, yaw: Optional[float] = None):
+    async def move_head(self, pitch: Optional[float] = None, roll: Optional[float] = None, yaw: Optional[float] = None,
+                        velocity: Optional[float] = None):
         """
         all vals in range [-100, 100]
 
@@ -368,7 +360,7 @@ class MovementAPI(PartialAPI):
         yaw: turn left and right
         velocity: how quickly
         """
-        return await self._post('head', HeadSettings(pitch, roll, yaw, 1).json)
+        return await self._post('head', HeadSettings(pitch, roll, yaw, velocity).json)
 
     async def stop(self, *, everything=False):
         """
@@ -430,7 +422,7 @@ class SystemAPI(PartialAPI):
         return await self._get_j('networks/scan')
 
     @property
-    async def battery(self) -> BatteryInfo:
+    async def battery_info(self) -> BatteryInfo:
         return BatteryInfo.from_meta(await self._get_j('battery'))
 
     @property
@@ -441,7 +433,7 @@ class SystemAPI(PartialAPI):
         """specs for the system at large"""
         return await self._get_j('help', **json_obj.from_not_none(command=endpoint))
 
-    async def get_logs(self, date: arrow.Arrow = None) -> str:
+    async def get_logs(self, date: arrow.Arrow = arrow.now()) -> str:
         params = json_obj()
         if date:
             params.date = date.format('YYYY/MM/DD')
@@ -483,42 +475,73 @@ class SystemAPI(PartialAPI):
         return await self._post('reboot', json_obj(Core=core, SensoryServices=sensory_services))
 
 
-class _SlamHelper(PartialAPI):
+class _SlamHelper(PartialAPI, ABC):
     """
     context manager to handle initializing and stopping slam functionality
 
     used by the NavigationAPI
     """
 
-    def __init__(self, api: MistyAPI, endpoint: str):
+    def __init__(self, api: MistyAPI, endpoint: str, timeout_secs=15.0):
         super().__init__(api)
         self._endpoint = endpoint
         self._num_current_slam_streams = 0
+        self._ready_cb = EventCallback(self._sensor_ready, timeout_secs)
 
-    async def _handler(self, sub_data: SubData):
-        """set the `_ready` event after the sensors are ready"""
-        # TODO: check if these are the same for all the slam types
-        if sub_data.data.message.slamStatus.runMode == 'Exploring':
-            self._ready.set()
+    @abstractmethod
+    async def _sensor_ready(self, sp: SubPayload):
+        """handler func that indicates when the sensor is ready"""
 
     async def start(self):
+        self._ready_cb.clear()
         await self._post(f'slam/{self._endpoint}/start')
-        async with self.api.ws.sub_unsub(SubType.self_state, self._handler):
-            await self._ready.wait()
 
     async def stop(self):
-        self._ready.clear()
         return await self._post(f'slam/{self._endpoint}/stop')
+
+    async def reset(self):
+        return await self._post('slam/reset')
 
     async def __aenter__(self):
         self._num_current_slam_streams += 1
         if self._num_current_slam_streams == 1:
             await self.start()
+            async with self.api.ws.sub_unsub(SubType.self_state, self._ready_cb):
+                await self._ready_cb
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         self._num_current_slam_streams -= 1
         if self._num_current_slam_streams == 0:
             await self.stop()
+
+
+class _SlamMapping(_SlamHelper):
+    def __init__(self, api: MistyAPI):
+        super().__init__(api, 'map')
+
+    async def _sensor_ready(self, sp: SubPayload):
+        ss = sp.data.message.slamStatus
+        return (ss.runMode == 'Exploring'
+                and all(v in ss.statusList for v in 'Ready Exploring HasPose Streaming'.split()))
+
+
+class _SlamStreaming(_SlamHelper):
+    def __init__(self, api: MistyAPI):
+        super().__init__(api, 'streaming')
+
+    async def _sensor_ready(self, sp: SubPayload):
+        ss = sp.data.message.slamStatus
+        return all(v in ss.statusList for v in 'Ready Streaming'.split())
+
+
+class _SlamTracking(_SlamHelper):
+    def __init__(self, api: MistyAPI):
+        super().__init__(api, 'track')
+
+    async def _sensor_ready(self, sp: SubPayload):
+        ss = sp.data.message.slamStatus
+        return (ss.runMode == 'Tracking'
+                and all(v in ss.statusList for v in ('Ready', 'Tracking', 'HasPose', 'Streaming')))
 
 
 class NavigationAPI(PartialAPI):
@@ -530,9 +553,9 @@ class NavigationAPI(PartialAPI):
 
     def __init__(self, api: MistyAPI):
         super().__init__(api)
-        self.slam_streaming = _SlamHelper(api, 'streaming')
-        self.slam_mapping = _SlamHelper(api, 'map')
-        self.slam_tracking = _SlamHelper(api, 'track')
+        self.slam_streaming = _SlamStreaming(api)
+        self.slam_mapping = _SlamMapping(api)
+        self.slam_tracking = _SlamTracking(api)
 
     async def reset_slam(self):
         return await self._post('slam/reset')
@@ -541,27 +564,28 @@ class NavigationAPI(PartialAPI):
         async with self.slam_streaming:
             return await self._get_j('cameras/depth')
 
-    async def take_fisheye_pic(self):
+    async def take_fisheye_pic(self) -> BytesIO:
         async with self.slam_streaming:
-            return await self._get_j('cameras/fisheye')
+            res = await self._get('cameras/fisheye')
+            return BytesIO(res.content)
 
     async def get_map(self):
-        async with self.slam_mapping:
-            return await self._get_j('slam/map')
+        return await self._get_j('slam/map')
 
-    @staticmethod
-    def _format_coords(*coords: Coords):
-        return ','.join(map(str, coords))
+    async def map(self):
+        """# algo for misty to move around slowly mapping her environment"""
+        # TODO: implement
+        raise NotImplementedError
 
     async def drive_to_coordinates(self, coords: Coords):
         async with self.slam_tracking:
-            await self._post('drive/coordinates', dict(Destination=self._format_coords(coords)))
+            await self._post('drive/coordinates', dict(Destination=Coords.format(coords)))
 
     async def follow_path(self, *coords: Coords):
         async with self.slam_tracking:
             if len(coords) == 1:
                 return await self.drive_to_coordinates(*coords)
-            return await self._post('drive/path', dict(Path=self._format_coords(*coords)))
+            return await self._post('drive/path', dict(Path=Coords.format(*coords)))
 
 
 class SkillAPI(PartialAPI):
@@ -580,8 +604,8 @@ class SkillAPI(PartialAPI):
         return await self._get_j('skills')
 
     async def run(self, skill_name_or_uid, method: Optional[str] = None):
-        return await self._post('skills/start',
-                                json_obj.from_not_none(Skill=skill_name_or_uid, Method=method)).json()['result']
+        return (await self._post('skills/start',
+                                 json_obj.from_not_none(Skill=skill_name_or_uid, Method=method))).json()['result']
 
     async def save(self, zip_file_name: str, *, apply_immediately: bool = False, overwrite_existing: bool = True):
         await self._post('skills', dict(File=zip_file_name, ImmediatelyApply=apply_immediately,
@@ -594,7 +618,6 @@ class SkillAPI(PartialAPI):
 
 
 # ======================================================================================================================
-
 
 class MistyAPI(RestAPI):
     """
@@ -651,8 +674,7 @@ class MistyAPI(RestAPI):
         # SUBSCRIPTION DATA - store most recent subscription info here
         # ==============================================================================================================
 
-        self.subscription_data: Dict[SubType, SubData] = dict.fromkeys(SubType,
-                                                                       SubData(arrow.Arrow.min, json_obj(), None))
+        self.subscription_data: Dict[Sub, SubPayload] = {}
 
     @staticmethod
     def _init_ip(ip):
@@ -693,6 +715,12 @@ class MistyAPI(RestAPI):
 
     async def _delete(self, endpoint, json: Optional[dict] = None, *, _headers=None, **params):
         return await self._request('DELETE', endpoint, **params, json=json, _headers=_headers)
+
+    def __eq__(self, other):
+        return self.ip == other.ip
+
+    def __hash__(self):
+        return hash(self.ip)
 
 
 def _run_example():

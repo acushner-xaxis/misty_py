@@ -1,8 +1,9 @@
 ##### random
+- [ ] improved/clear face training
 - [ ] store arm/head/etc positions and be able to increment them
 - [ ] theme songs associated with faces
 - [ ] laser pointer ala terminator
-    - [ ] say "activate kill mode"
+    - [ ] enable with voice command
 - [ ] ask misty where certain people are (based on calendar) and have her guide you to them
 - [ ] misty spouts kaizen phrases all day
 

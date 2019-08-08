@@ -1,7 +1,7 @@
 import asyncio
 import json
 from abc import abstractmethod, ABC
-from enum import IntFlag
+from enum import IntFlag, Enum
 from functools import wraps
 from pathlib import Path
 from typing import NamedTuple, Dict, Optional, Union, List, Set, Any, Coroutine
@@ -11,11 +11,19 @@ from base64 import b64decode, b64encode
 from io import BytesIO
 
 __all__ = (
-    'SlamStatus', 'Coords', 'InstanceCache', 'ArmSettings', 'HeadSettings', 'json_obj', 'RestAPI', 'JSONObjOrObjs',
-    'decode_img', 'save_data_locally', 'generate_upload_payload', 'delay', 'MISTY_URL', 'asyncpartial'
+    'Coords', 'InstanceCache', 'ArmSettings', 'HeadSettings', 'json_obj', 'RestAPI', 'JSONObjOrObjs', 'decode_img',
+    'save_data_locally', 'generate_upload_payload', 'delay', 'MISTY_URL', 'asyncpartial', 'classproperty'
 )
 
 MISTY_URL = 'http://192.168.86.249'
+
+
+class classproperty:
+    def __init__(self, f):
+        self.f = f
+
+    def __get__(self, instance, cls):
+        return self.f(cls)
 
 
 def asyncpartial(coro, *args, **kwargs):
@@ -26,20 +34,16 @@ def asyncpartial(coro, *args, **kwargs):
     return wrapped
 
 
-class SlamStatus(IntFlag):
-    idle = 1
-    exploring = 2
-    tracking = 4
-    recording = 8
-    resetting = 16
-
-
 class Coords(NamedTuple):
     x: int
     y: int
 
     def __str__(self):
         return f'{self.x}:{self.y}'
+
+    @staticmethod
+    def format(*coords: 'Coords'):
+        return ','.join(map(str, coords))
 
 
 def _denormalize(obj) -> Dict[str, float]:
@@ -86,7 +90,7 @@ class HeadSettings(NamedTuple):
     yaw: Optional[float] = None
     velocity: Optional[float] = None
 
-    _var_range = dict(pitch=-10, roll=50, yaw=-100, velocity=10)
+    _var_range = dict(pitch=-10, roll=50, yaw=-100, velocity=100)
 
     @property
     def json(self) -> Dict[str, float]:
@@ -224,9 +228,11 @@ def encode_data(filename_or_bytes: Union[str, bytes]) -> str:
     return b64encode(data).decode()
 
 
-def decode_data(data_base64) -> BytesIO:
+def decode_data(data: Union[str, bytes, BytesIO]) -> BytesIO:
     """decode base64 data"""
-    res = data_base64
+    if isinstance(data, BytesIO):
+        return data
+    res = data
     if isinstance(res, str):
         res = res.encode()
     if b',' in res:

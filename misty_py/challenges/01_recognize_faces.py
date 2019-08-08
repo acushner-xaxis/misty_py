@@ -1,11 +1,11 @@
 import asyncio
-from contextlib import suppress
-from typing import NamedTuple, Optional, Dict
+from typing import NamedTuple, Dict
 
 import arrow
 
 from misty_py.api import MistyAPI, MISTY_URL
-from misty_py.subscriptions import SubData, HandlerType, SubType, Actuator, SubEC, EventCallback
+from misty_py.subscriptions import SubPayload, SubType, Actuator, Sub
+from misty_py.misty_ws import EventCallback, UnchangedValue
 
 __author__ = 'acushner'
 
@@ -49,48 +49,24 @@ add_person(Person('sweettuse', 'sweettuse_recognized.mp3', 'price_is_right.mp3')
 # ======================================================================================================================
 
 
-async def wait_one(sd: SubData):
-    print('wait_one', sd)
+async def wait_one(sp: SubPayload):
+    print('wait_one', sp)
     return True
 
 
-class UnchangedValue:
-    """useful for determining when something is done, say, moving"""
-
-    def __init__(self):
-        self._prev: Optional[SubData] = None
-        self._ready = asyncio.Event()
-
-    __call__: HandlerType
-
-    async def __call__(self, sd: SubData):
-        print('uv', sd)
-        if self._prev is None:
-            self._prev = sd
-            return
-        prev, self._prev = self._prev, sd
-        with suppress(AttributeError):
-            if prev.data.message.value == sd.data.message.value:
-                self._ready.set()
-
-    async def wait(self):
-        await self._ready.wait()
-
-
 async def _handle_head_movement(yaw):
-    uv = UnchangedValue()
-    sub_ec = SubEC.from_sub_ec(SubType.actuator_position, Actuator.yaw.event_condition)
+    ecb = EventCallback(UnchangedValue())
     await api.movement.move_head(yaw=yaw)
-    async with api.ws.sub_unsub(sub_ec, uv, 400):
-        await uv.wait()
+    async with api.ws.sub_unsub(Actuator.yaw.sub, ecb, 400):
+        await ecb
 
 
-async def _handle_face_recognition(sd: SubData):
-    print('face_rec', sd)
-    person = people.pop(sd.data.message.personName, None)
+async def _handle_face_recognition(sp: SubPayload):
+    print('face_rec', sp)
+    person = people.pop(sp.data.message.personName, None)
     if person:
         print('found', person)
-        await sd.sub_req.unsubscribe()
+        await sp.sub_id.unsubscribe()
         await person.on_find(api)
         return True
 
@@ -108,7 +84,7 @@ async def run():
     await asyncio.sleep(3)
     face_handler = await _init_face_recognition()
     await _handle_head_movement(200)
-    await face_handler.wait()
+    await face_handler
     await api.faces.stop_recognition()
     print('done')
 
