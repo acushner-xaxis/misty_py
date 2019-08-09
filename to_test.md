@@ -47,22 +47,26 @@
  
  - is there an easy way to tell when face training is complete?
     - i could poll `faces.list` to see when it shows up, perhaps?
+    - _check out command center_
  - is there a way to play video?
+    - _put in as request_
  - easy way to center images?
+    - __
  - what about playing simple games on the display?
     - or even streaming video?
     - could be used as a way to watch stuff online
  - can we provide our own, custom key phrases?
+    - _possibly in future_
  - no ability to upload multiple files concurrently
     - not that big a deal, i just noticed it didn't work
  - how do you get settings such as, e.g.:
     - current positioning for arms
     - current image displayed
  - increase file size for audio files?
+    - _put in as request_
  - how do you affect mental state?
+    - _probably not focused on_
+ - how to set messages
+    - _check command center_
  
-##### TODO:
  
-- [ ] implement RemoveBlinkMappings - BETA
-- [ ] implement SetBlinking - BETA
-- [ ] implement SetBlinkSettings - BETA

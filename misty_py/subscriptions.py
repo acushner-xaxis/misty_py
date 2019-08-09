@@ -28,12 +28,15 @@ class SubType(Enum):
     bump_sensor = 'BumpSensor'
     drive_encoders = 'DriveEncoders'
     face_recognition = 'FaceRecognition'
+    face_training = 'FaceTraining'
     halt_command = 'HaltCommand'
     imu = 'IMU'
     key_phrase_recognized = 'KeyPhraseRecognized'
     locomotion_command = 'LocomotionCommand'
     self_state = 'SelfState'
     serial_message = 'SerialMessage'
+    source_focus_config_msg = 'SourceFocusConfigMessage'
+    source_track_data_msg = 'SourceTrackDataMessage'
     time_of_flight = 'TimeOfFlight'
     touch_sensor = 'TouchSensor'
     world_state = 'WorldState'
@@ -208,7 +211,7 @@ class Sub(NamedTuple):
 class SubId(NamedTuple):
     """subscription identifier"""
     id: int
-    type: Sub
+    sub: Sub
     api: 'MistyAPI'
 
     _count = count(1)
@@ -219,15 +222,15 @@ class SubId(NamedTuple):
 
     @property
     def event_name(self) -> str:
-        return f'{str(self.type)}-{self.id:04}'
+        return f'{str(self.sub)}-{self.id:04}'
 
     def to_json(self, debounce_ms) -> json_obj:
-        payload = json_obj(Operation='subscribe', Type=self.type.sub_type.value, DebounceMS=debounce_ms,
+        payload = json_obj(Operation='subscribe', Type=self.sub.sub_type.value, DebounceMS=debounce_ms,
                            EventName=self.event_name)
-        if self.type.ec:
-            payload.EventConditions = [ec.json for ec in self.type.ec]
-        if self.type.return_prop:
-            payload.ReturnProperty = self.type.return_prop
+        if self.sub.ec:
+            payload.EventConditions = [ec.json for ec in self.sub.ec]
+        if self.sub.return_prop:
+            payload.ReturnProperty = self.sub.return_prop
         return payload
 
     async def unsubscribe(self):

@@ -1,6 +1,7 @@
 import asyncio
 import json
 from abc import abstractmethod, ABC
+from contextlib import suppress
 from enum import IntFlag, Enum
 from functools import wraps
 from pathlib import Path
@@ -12,10 +13,10 @@ from io import BytesIO
 
 __all__ = (
     'Coords', 'InstanceCache', 'ArmSettings', 'HeadSettings', 'json_obj', 'RestAPI', 'JSONObjOrObjs', 'decode_img',
-    'save_data_locally', 'generate_upload_payload', 'delay', 'MISTY_URL', 'asyncpartial', 'classproperty'
+    'save_data_locally', 'generate_upload_payload', 'delay', 'MISTY_URL', 'asyncpartial', 'classproperty', 'wait_first'
 )
 
-MISTY_URL = 'http://192.168.86.249'
+MISTY_URL = 'http://192.168.86.20'
 
 
 class classproperty:
@@ -290,6 +291,25 @@ def format_help(help):
         pp(v)
         print()
     return res
+
+
+class DonePending(NamedTuple):
+    done: Set[asyncio.Future]
+    pending: Set[asyncio.Future]
+
+
+async def wait_first(*coros, cancel=True, return_when=asyncio.FIRST_COMPLETED) -> DonePending:
+    """
+    wait for the first task to complete (default) or raise an exception
+    by default, cancel all pending ones
+    """
+    done, pending = await asyncio.wait(coros, return_when=return_when)
+    g = asyncio.gather(*pending)
+    if cancel:
+        g.cancel()
+    with suppress(asyncio.CancelledError):
+        await g
+    return DonePending(done, pending)
 
 # class aobject:
 #     """enable async init of objects"""

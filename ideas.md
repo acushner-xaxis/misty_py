@@ -1,3 +1,12 @@
+##### TODO:
+- [ ] implement RemoveBlinkMappings - BETA
+- [ ] implement SetBlinking - BETA
+- [ ] implement SetBlinkSettings - BETA
+- [ ] implement keyword recognition
+- [ ] audio complete to use metadata
+- [ ] face training: implement pre/post cbs
+- [ ] super blinky eyes
+
 ##### random
 - [ ] improved/clear face training
 - [ ] store arm/head/etc positions and be able to increment them
@@ -6,6 +15,7 @@
     - [ ] enable with voice command
 - [ ] ask misty where certain people are (based on calendar) and have her guide you to them
 - [ ] misty spouts kaizen phrases all day
+- [ ] simon - the game
 
 
 ##### interaction
@@ -53,6 +63,6 @@
 - [ ] pitch matching
 - [ ] text scrolling
 - [ ] video game chars
-- [ ] misty as security guard for our stuff (hat tip: josh)
+- [ ] misty as security guard for our stuff
 - [ ] integrate with homekit?
 

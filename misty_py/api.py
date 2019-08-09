@@ -8,10 +8,12 @@ from abc import ABC, abstractmethod
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
 from io import BytesIO
-from typing import Dict, Optional, Set, NamedTuple
+from pathlib import Path
+from typing import Dict, Optional, Set, NamedTuple, Coroutine
 
 import arrow
 import requests
+import uvloop
 from PIL import Image as PImage
 
 from misty_py.subscriptions import SubType, SubPayload, Sub
@@ -21,6 +23,9 @@ from .utils import *
 
 WIDTH = 480
 HEIGHT = 272
+
+
+# uvloop.install()
 
 
 # ======================================================================================================================
@@ -174,7 +179,6 @@ class AudioAPI(PartialAPI):
         # self.saved_audio = asyncio.run(self.list())
 
     async def get(self, file_name: str) -> BytesIO:
-        # TODO: what the hell do we get back?
         res = await self._get('audio', FileName=file_name)
         return BytesIO(res.content)
 
@@ -189,31 +193,49 @@ class AudioAPI(PartialAPI):
         return res
 
     async def upload(self, file_name: str, *, apply_immediately: bool = False, overwrite_existing: bool = True):
-        """upload data (mp3, wav, not sure what else) to misty"""
-        return await self._post('audio', generate_upload_payload(file_name, apply_immediately, overwrite_existing))
+        """
+        upload data (mp3, wav, not sure what else) to misty
 
-    async def _handle_how_long_secs(self, how_long_secs, blocking):
+        for some reason it's faster to upload and play separately
+        rather than set `apply_immediately` on the upload request
+        """
+
+        res = await self._post('audio', generate_upload_payload(file_name, False, overwrite_existing))
+        if apply_immediately:
+            await self.play(file_name)
+        return res
+
+    async def play(self, file_name: str, volume: int = 100, how_long_secs: Optional[int] = None, *, blocking=False):
+        """play for how long you want to"""
+        name = Path(file_name).name
+        payload = dict(FileName=name, Volume=min(max(volume, 1), 100))
+        res = await self._post('audio/play', payload)
+        await self._handle_blocking_play_calls(name, how_long_secs, blocking)
+        return res
+
+    async def _handle_blocking_play_calls(self, name: str, how_long_secs: float, blocking: bool):
+        """
+        handle waiting for audio to finish. we need to either:
+
+        - block until the song completes
+        - block until either the song completes or the elapsed time has expired
+        - do nothing
+        """
         if how_long_secs is not None:
             coro = delay(how_long_secs, self.stop_playing())
             if blocking:
-                await coro
-            else:
-                asyncio.create_task(coro)
+                return await coro
+            asyncio.create_task(coro)
         elif blocking:
-            # TODO: use metadata from audio_play_complete to make sure the correct sound is ending
-            async def _wait_one(_):
-                return True
+            print('something')
+
+            async def _wait_one(sp: SubPayload):
+                print(name, sp.data.message, sp.data.message.metaData.name == name)
+                return sp.data.message.metaData.name == name
 
             event = EventCallback(_wait_one)
             async with self.api.ws.sub_unsub(SubType.audio_play_complete, event):
                 await event
-
-    async def play(self, file_name: str, volume: int = 100, how_long_secs: Optional[int] = None, *, blocking=False):
-        """play for how long you want to"""
-        payload = dict(FileName=file_name, Volume=min(max(volume, 1), 100))
-        res = await self._post('audio/play', payload)
-        await self._handle_how_long_secs(how_long_secs, blocking)
-        return res
 
     async def stop_playing(self):
         """trigger a small amount of silence to stop a playing song"""
@@ -271,7 +293,7 @@ class FaceAPI(PartialAPI):
         """stop finding/detecting faces in misty's line of vision"""
         await self._post('faces/detection/stop')
 
-    async def start_training(self, face_id: str):
+    async def start_training(self, face_id: str, pre: Optional[Coroutine] = None, post: Optional[Coroutine] = None):
         """
         start training a particular face
 
@@ -279,7 +301,12 @@ class FaceAPI(PartialAPI):
         TODO: set up something to alert the user that this is happening
             - change LED colors, display some text
         """
-        return await self._post('faces/training/start', dict(FaceId=face_id))
+        if pre:
+            await pre
+        res = await self._post('faces/training/start', dict(FaceId=face_id))
+        if post:
+            pass
+        return res
 
     async def stop_training(self):
         """stop training a particular face"""
@@ -651,7 +678,7 @@ class MistyAPI(RestAPI):
     =================================
     """
 
-    _pool = ThreadPoolExecutor(16)
+    _pool = ThreadPoolExecutor(64)
 
     def __init__(self, ip: Optional[str] = None):
         """either pass in ip directly or set in env"""
@@ -739,7 +766,7 @@ def _run_example():
         # dispatch multiple tasks at once
         coros = (api.images.take_picture(),
                  api.system.help(),
-                 api.system.battery  # note: `battery` is an "async" property
+                 api.system.battery_info  # note: `battery_info` is an "async" property
                  )
         results_in_order = await asyncio.gather(*coros)
         return results_in_order

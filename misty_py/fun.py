@@ -9,7 +9,7 @@ import arrow
 from misty_py.api import MistyAPI
 from misty_py.subscriptions import Actuator
 from misty_py.misty_ws import EventCallback, UnchangedValue
-from misty_py.utils import MISTY_URL
+from misty_py.utils import MISTY_URL, wait_first
 
 __author__ = 'acushner'
 
@@ -53,6 +53,7 @@ async def nod(pitch=100, roll=0, yaw=0, velocity=100, n_times=6):
         await api.movement.move_head(pitch=pitch, yaw=yaw, roll=roll, velocity=velocity)
         await asyncio.sleep(.2)
         pitch *= -1
+    await api.movement.move_head(pitch=0)
 
 
 async def shake_head(pitch=20, roll=0, yaw=-40, velocity=100, n_times=6):
@@ -62,6 +63,33 @@ async def shake_head(pitch=20, roll=0, yaw=-40, velocity=100, n_times=6):
         await api.movement.move_head(pitch=pitch, yaw=yaw, roll=roll, velocity=velocity)
         await asyncio.sleep(.3)
         yaw *= -1
+    await api.movement.move_head(yaw=0)
+
+
+async def wave(l_or_r: str = 'r', position=60, velocity=60, n_times=6):
+    positions = position, 0
+    for i in range(n_times):
+        kwargs = {f'{l_or_r}_position': position, f'{l_or_r}_velocity': velocity}
+        await api.movement.move_arms(**kwargs)
+        await asyncio.sleep(.4)
+        position = positions[i & 1]
+    await api.movement.move_arms(l_position=0, r_position=0, l_velocity=velocity, r_velocity=velocity)
+
+
+async def wave2(l_or_r: str = 'l', position=120, velocity=60, n_times=8):
+    positions = position, 0
+    uv = UnchangedValue(5, debug=True)
+    ecb = EventCallback(uv)
+    async with api.ws.sub_unsub(Actuator.left_arm, ecb, 10):
+        for i in range(n_times):
+            position = positions[i & 1]
+            kwargs = {f'{l_or_r}_position': position, f'{l_or_r}_velocity': velocity}
+            await api.movement.move_arms(**kwargs)
+            ecb.clear()
+            uv.clear()
+            await ecb
+            print(position)
+    await api.movement.move_arms(l_position=0, r_position=0, l_velocity=velocity, r_velocity=velocity)
 
 
 async def blinky():
@@ -79,3 +107,24 @@ async def train_face():
     - save picture with name
     - ultimately a simple website with form to add cool things about the person?
     """
+
+
+async def whats_happening():
+    res = await api.audio.play('from_google.mp3', volume=10, blocking=True)
+    res = await api.audio.play('tada_win31.mp3', volume=80, blocking=True)
+    print(res)
+    print(arrow.utcnow())
+    return res
+
+
+async def wait_play():
+    coros = (asyncio.sleep(n) for n in range(1, 100))
+    d, p = await wait_first(*coros)
+    print(type(d), d)
+    print(len(p))
+
+
+if __name__ == '__main__':
+    print(asyncio.run(wait_play()))
+    # asyncio.run(whats_happening())
+    # print(arrow.utcnow())
