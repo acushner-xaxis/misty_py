@@ -5,6 +5,7 @@
 - almost fully featured
 - testing in progress with a field trial version
 - will always remain public
+- expect things to break for a bit
 
 ##### installation
 - use python 3.7

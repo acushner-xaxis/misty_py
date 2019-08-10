@@ -335,7 +335,7 @@ def async_run(coro):
     run coro and then drain any pending tasks
     a seemingly better substitute for `asyncio.run`
     """
-    asyncio.run(_async_run_helper(coro))
+    asyncio.run(_async_run_helper(coro), debug=True)
 
 # class aobject:
 #     """enable async init of objects"""
