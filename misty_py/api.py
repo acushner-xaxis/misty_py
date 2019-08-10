@@ -9,15 +9,13 @@ from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial, wraps
 from io import BytesIO
 from pathlib import Path
-from typing import Dict, Optional, Set, NamedTuple, Coroutine
+from typing import Dict, Optional, Set, NamedTuple
 
 import arrow
 import requests
-import uvloop
-from PIL import Image as PImage
 
-from misty_py.subscriptions import SubType, SubPayload, Sub, HandlerType, FTMsgs
 from misty_py.misty_ws import EventCallback
+from misty_py.subscriptions import SubType, SubPayload, Sub, HandlerType, FTMsgs
 from .misty_ws import MistyWS
 from .utils import *
 
