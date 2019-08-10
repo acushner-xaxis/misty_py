@@ -1,6 +1,7 @@
 ##### notes/issues:
 - `DisplayOnScreen` in `take_picture` does not work well - just a fuzzy blurry screen image
-- audio in both audio and video recording doesn't work
+- audio in both audio and video recording wasn't working
+    - reboot fixed it
     - she can, however, recognize her key phrase
     
 ##### TODO:
