@@ -43,15 +43,18 @@
     - [x] mapping
     - [x] tracking
  
-##### misc:
+##### questions:
+- can we store assets in different folders?
+    - perhaps more like prefixes in aws s3
  
+##### first round of questions
  - is there an easy way to tell when face training is complete?
     - i could poll `faces.list` to see when it shows up, perhaps?
     - _check out command center_
  - is there a way to play video?
     - _put in as request_
  - easy way to center images?
-    - __
+    - _feature request?_
  - what about playing simple games on the display?
     - or even streaming video?
     - could be used as a way to watch stuff online

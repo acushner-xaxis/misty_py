@@ -3,9 +3,13 @@
 - [ ] implement SetBlinking - BETA
 - [ ] implement SetBlinkSettings - BETA
 - [ ] implement keyword recognition
-- [ ] audio complete to use metadata
+- [x] audio complete to use metadata
+- [ ] change upload to include optional path
+    - [ ] audio
+    - [ ] images
 - [ ] face training: implement pre/post cbs
 - [ ] super blinky eyes
+- [ ] revisit _denormalization settings
 
 ##### random
 - [ ] improved/clear face training

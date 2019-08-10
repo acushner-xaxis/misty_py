@@ -6,6 +6,7 @@ import arrow
 from misty_py.api import MistyAPI, MISTY_URL
 from misty_py.subscriptions import SubPayload, SubType, Actuator, Sub
 from misty_py.misty_ws import EventCallback, UnchangedValue
+from misty_py.utils import async_run
 
 __author__ = 'acushner'
 
@@ -90,9 +91,8 @@ async def run():
 
 
 def __main():
-    asyncio.run(run())
+    async_run(run())
     print('we did something')
-    # asyncio.run(asyncio.gather(*asyncio.Task.all_tasks()))
     pass
 
 

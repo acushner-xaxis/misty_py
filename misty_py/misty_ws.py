@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager, suppress
 from itertools import count
 from typing import Dict, NamedTuple, Union, Optional
 
+import arrow
 import websockets
 
 from misty_py.subscriptions import SubType, SubId, SubPayload, HandlerType, Sub, LLSubType
@@ -35,14 +36,27 @@ class EventCallback:
         self._timeout_secs = timeout_secs
 
     async def wait(self):
-        return await asyncio.wait_for(self._ready.wait(), self._timeout_secs)
+        try:
+            return await asyncio.wait_for(self._ready.wait(), self._timeout_secs)
+        except asyncio.CancelledError:
+            self.set()
 
     def clear(self):
         self._ready.clear()
 
+    def set(self):
+        self._ready.set()
+
     async def __call__(self, sp: SubPayload):
         if await self._handler(sp):
             self._ready.set()
+
+    async def sub_unsub(self, api, sub: Union[SubType, LLSubType, Sub], debounce_ms: int = 250):
+        try:
+            async with api.ws.sub_unsub(sub, self, debounce_ms):
+                await self
+        except asyncio.CancelledError:
+            self.set()
 
     def __await__(self):
         return self.wait().__await__()
@@ -131,7 +145,7 @@ class MistyWS(metaclass=InstanceCache):
         self._tasks[sub_id] = TaskInfo(asyncio.create_task(self._handle(ws, handler, sub_id)), ws)
 
         payload = sub_id.to_json(debounce_ms)
-        print(payload)
+        print('subscribing:', payload)
         await ws.send(payload.json_str)
 
         return sub_id
@@ -152,6 +166,7 @@ class MistyWS(metaclass=InstanceCache):
 
         can unsubscribe either by `SubType` or `SubId`
         """
+        print(arrow.utcnow(), 'unsubscribing:', sub_id)
         if isinstance(sub_id, str):
             return await self._unsubscribe_str(sub_id)
 
@@ -169,6 +184,7 @@ class MistyWS(metaclass=InstanceCache):
         payload = json_obj(Operation='unsubscribe', EventName=sub_id.event_name, Message=str(sub_id))
         await ti.ws.send(payload.json_str)
         await ti.ws.close()
+        print(arrow.utcnow(), 'unsubscribed')
         return True
 
     async def unsubscribe_all(self):
@@ -193,16 +209,16 @@ class MistyWS(metaclass=InstanceCache):
         """
         take messages from the websocket and pass them on to the handler
         additionally, skip the registration message
-        TODO: check for error on subscription registration
         """
         async for msg in ws:
-            print(msg)
             o = json_obj.from_str(msg)
 
             # skip registration message
             if isinstance(o.message, str):
-                print(o.message)
+                if not o.message.startswith('Registration Status: API event registered'):
+                    print('Failed to register:', o)
+                    await sub_id.unsubscribe()
                 continue
 
             sp = self.api.subscription_data[sub_id.sub] = SubPayload.from_data(o, sub_id)
-            await handler(sp)
+            create_task(handler(sp))

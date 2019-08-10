@@ -210,10 +210,10 @@ class AudioAPI(PartialAPI):
         name = Path(file_name).name
         payload = dict(FileName=name, Volume=min(max(volume, 1), 100))
         res = await self._post('audio/play', payload)
-        await self._handle_blocking_play_calls(name, how_long_secs, blocking)
+        await self._handle_blocking_play_call(name, how_long_secs, blocking)
         return res
 
-    async def _handle_blocking_play_calls(self, name: str, how_long_secs: float, blocking: bool):
+    async def _handle_blocking_play_call(self, name: str, how_long_secs: float, blocking: bool):
         """
         handle waiting for audio to finish. we need to either:
 
@@ -224,18 +224,21 @@ class AudioAPI(PartialAPI):
         if how_long_secs is not None:
             coro = delay(how_long_secs, self.stop_playing())
             if blocking:
-                return await coro
+                return await wait_first(coro, self._handle_audio_complete(name))
             asyncio.create_task(coro)
         elif blocking:
-            print('something')
+            await self._handle_audio_complete(name)
 
-            async def _wait_one(sp: SubPayload):
-                print(name, sp.data.message, sp.data.message.metaData.name == name)
-                return sp.data.message.metaData.name == name
+    async def _handle_audio_complete(self, name):
+        async def _wait_one(sp: SubPayload):
+            return sp.data.message.metaData.name == name
 
-            event = EventCallback(_wait_one)
+        event = EventCallback(_wait_one)
+        try:
             async with self.api.ws.sub_unsub(SubType.audio_play_complete, event):
                 await event
+        except asyncio.CancelledError:
+            event.set()
 
     async def stop_playing(self):
         """trigger a small amount of silence to stop a playing song"""

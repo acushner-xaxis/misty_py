@@ -2,7 +2,6 @@ import asyncio
 import os
 import random
 from contextlib import suppress
-from pathlib import Path
 
 import arrow
 
@@ -10,6 +9,7 @@ from misty_py.api import MistyAPI
 from misty_py.subscriptions import Actuator
 from misty_py.misty_ws import EventCallback, UnchangedValue
 from misty_py.utils import MISTY_URL, wait_first
+from misty_py.utils.core import async_run
 
 __author__ = 'acushner'
 
@@ -110,9 +110,11 @@ async def train_face():
 
 
 async def whats_happening():
-    res = await api.audio.play('from_google.mp3', volume=10, blocking=True)
-    res = await api.audio.play('tada_win31.mp3', volume=80, blocking=True)
-    print(res)
+    # res = await api.audio.play('from_google.mp3', volume=10, blocking=True, how_long_secs=100)
+    # res = await api.audio.play('tada_win31.mp3', volume=80, blocking=True, how_long_secs=.5)
+    res = await api.audio.play('tada_win31.mp3', volume=80, blocking=True, how_long_secs=.5)
+    res = await api.audio.play('tada_win31.mp3', volume=80, blocking=True, how_long_secs=4)
+    res = await api.audio.play('tada_win31.mp3', volume=80, blocking=True, how_long_secs=.5)
     print(arrow.utcnow())
     return res
 
@@ -125,6 +127,7 @@ async def wait_play():
 
 
 if __name__ == '__main__':
-    print(asyncio.run(wait_play()))
+    async_run(whats_happening())
+    print(arrow.utcnow())
     # asyncio.run(whats_happening())
     # print(arrow.utcnow())

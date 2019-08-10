@@ -13,7 +13,8 @@ from io import BytesIO
 
 __all__ = (
     'Coords', 'InstanceCache', 'ArmSettings', 'HeadSettings', 'json_obj', 'RestAPI', 'JSONObjOrObjs', 'decode_img',
-    'save_data_locally', 'generate_upload_payload', 'delay', 'MISTY_URL', 'asyncpartial', 'classproperty', 'wait_first'
+    'save_data_locally', 'generate_upload_payload', 'delay', 'MISTY_URL', 'asyncpartial', 'classproperty', 'wait_first',
+    'async_run'
 )
 
 MISTY_URL = 'http://192.168.86.20'
@@ -265,10 +266,15 @@ async def delay(how_long_secs, to_run: Coroutine, cb: Optional[Coroutine] = None
     run `to_run` coroutine after `how_long_secs`
     if provided, `cb` (callback) will be called when done
     """
-    await asyncio.sleep(how_long_secs)
-    await to_run
-    if cb:
-        await cb
+    try:
+        await asyncio.sleep(how_long_secs)
+        await to_run
+        if cb:
+            await cb
+    except asyncio.CancelledError:
+        to_run.close()
+        if cb:
+            cb.close()
 
 
 def format_help(help):
@@ -310,6 +316,26 @@ async def wait_first(*coros, cancel=True, return_when=asyncio.FIRST_COMPLETED) -
     with suppress(asyncio.CancelledError):
         await g
     return DonePending(done, pending)
+
+
+async def _await_all():
+    """await any remaining tasks"""
+    for t in asyncio.all_tasks():
+        with suppress(Exception):
+            await t
+
+
+async def _async_run_helper(coro):
+    await coro
+    await _await_all()
+
+
+def async_run(coro):
+    """
+    run coro and then drain any pending tasks
+    a seemingly better substitute for `asyncio.run`
+    """
+    asyncio.run(_async_run_helper(coro))
 
 # class aobject:
 #     """enable async init of objects"""
