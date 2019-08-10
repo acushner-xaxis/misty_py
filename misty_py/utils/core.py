@@ -14,7 +14,7 @@ from io import BytesIO
 __all__ = (
     'Coords', 'InstanceCache', 'ArmSettings', 'HeadSettings', 'json_obj', 'RestAPI', 'JSONObjOrObjs', 'decode_img',
     'save_data_locally', 'generate_upload_payload', 'delay', 'MISTY_URL', 'asyncpartial', 'classproperty', 'wait_first',
-    'async_run'
+    'async_run', 'format_help'
 )
 
 MISTY_URL = 'http://192.168.86.20'

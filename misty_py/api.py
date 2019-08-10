@@ -6,7 +6,7 @@ import os
 import textwrap
 from abc import ABC, abstractmethod
 from concurrent.futures.thread import ThreadPoolExecutor
-from functools import partial
+from functools import partial, wraps
 from io import BytesIO
 from pathlib import Path
 from typing import Dict, Optional, Set, NamedTuple, Coroutine
@@ -16,7 +16,7 @@ import requests
 import uvloop
 from PIL import Image as PImage
 
-from misty_py.subscriptions import SubType, SubPayload, Sub
+from misty_py.subscriptions import SubType, SubPayload, Sub, HandlerType
 from misty_py.misty_ws import EventCallback
 from .misty_ws import MistyWS
 from .utils import *
@@ -264,6 +264,19 @@ class AudioAPI(PartialAPI):
         """stop recording audio"""
         await self._post('audio/record/stop')
 
+    async def start_key_phrase_recognition(self, on_recognition: HandlerType):
+        @wraps(on_recognition)
+        async def _wrapper(sp: SubPayload):
+            asyncio.create_task(sp.sub_id.unsubscribe())
+            return await on_recognition(sp)
+
+        await self.api.ws.subscribe(SubType.key_phrase_recognized, _wrapper)
+        await self._post('audio/keyphrase/start')
+
+    async def stop_key_phrase_recognition(self):
+        await self._post('audio/keyphrase/stop')
+        await self.api.ws.unsubscribe(SubType.key_phrase_recognized)
+
 
 class FaceAPI(PartialAPI):
     """perform face detection, training, recognition; delete faces"""
@@ -327,13 +340,6 @@ class FaceAPI(PartialAPI):
         """stop attempting to recognize faces"""
         return await self._post('faces/recognition/stop')
 
-    async def start_key_phrase_recognition(self):
-        # TODO: this
-        raise NotImplementedError
-
-    async def stop_key_phrase_recognition(self):
-        # TODO: this
-        raise NotImplementedError
 
     async def stop_all(self):
         return await asyncio.gather(self.stop_training(), self.cancel_training(), self.stop_recognition())

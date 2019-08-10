@@ -96,25 +96,17 @@ async def blinky():
     """make a super blinky eye image out of an existing one"""
 
 
-async def train_face():
-    """
-    create a clean routine for training someone's face
-    - respond to misty command?
-    - take picture to confirm who's face it is
-    - change led colors while training
-    - display countdown on screen
-    - prompt for name at end and translate into text?
-    - save picture with name
-    - ultimately a simple website with form to add cool things about the person?
-    """
-
 
 async def whats_happening():
     # res = await api.audio.play('from_google.mp3', volume=10, blocking=True, how_long_secs=100)
     # res = await api.audio.play('tada_win31.mp3', volume=80, blocking=True, how_long_secs=.5)
-    res = await api.audio.play('tada_win31.mp3', volume=80, blocking=True, how_long_secs=.5)
-    res = await api.audio.play('tada_win31.mp3', volume=80, blocking=True, how_long_secs=4)
-    res = await api.audio.play('tada_win31.mp3', volume=80, blocking=True, how_long_secs=.5)
+    # res = await api.audio.play('tada_win31.mp3', volume=80, blocking=True, how_long_secs=.5)
+    # res = await api.audio.play('tada_win31.mp3', volume=80, blocking=True, how_long_secs=4)
+    # res = await api.audio.play('tada_win31.mp3', volume=80, blocking=True, how_long_secs=.5)
+    res = await api.audio.play('smooth_jazz_speech.mp3', volume=80, blocking=True)
+    res = await api.audio.play('smooth_jazz_will_be_deployed.mp3', volume=80, blocking=True)
+    # res = await api.audio.play('tada_win31.mp3', volume=80, blocking=True, how_long_secs=.5)
+
     print(arrow.utcnow())
     return res
 
