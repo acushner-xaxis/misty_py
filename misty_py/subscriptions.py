@@ -248,6 +248,15 @@ class SubPayload(NamedTuple):
         return cls(arrow.now(), o, sid)
 
 
+class FTMsgs(Enum):
+    """face training messages"""
+    started = 'Face training successfully started.'
+    warning = "Warning, no faces in camera's vision."
+    taking_pictures = "Face training is taking pictures, please don't move."
+    detection_complete = 'Face training detection phase complete.'
+    complete = 'Face training embedding phase complete.'
+
+
 def __main():
     pass
 
