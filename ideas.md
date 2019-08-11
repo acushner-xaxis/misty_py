@@ -3,6 +3,12 @@
 - audio in both audio and video recording wasn't working
     - reboot fixed it
     - she can, however, recognize her key phrase
+- if you upload audio to something like `path/audio.wav`, only `path` remains after reboot
+    - example:
+    - upload `path/audio.wav`
+    - play `path/audio.wav`  # success
+    - reboot
+    - play `path/audio.wav`  # 500 error - clip not there
     
 ##### TODO:
 - [ ] implement RemoveBlinkMappings - BETA
@@ -10,19 +16,20 @@
 - [ ] implement SetBlinkSettings - BETA
 - [x] implement keyword recognition
 - [x] audio complete to use metadata
-- [ ] change upload to include optional path
+- [ ] ON HOLD: change upload to include optional path
     - [ ] audio
     - [ ] images
-- [ ] face training: implement awesome way
-    - [ ] easily chain multiple audio files together
-    - [ ] upload multiple images/audio files in one call
+- [x] face training: implement awesome way
+    - [x] easily chain multiple audio files together
+    - [x] won't do: upload multiple images/audio files in one call
 - [ ] super blinky eyes
 - [ ] revisit _denormalization settings
-- [ ] upload a gif
+- [x] upload a gif
+    - gif doesn't animate
 - [ ] implement common colors
 
 ##### random
-- [ ] improved/clear face training
+- [x] improved/clear face training
 - [ ] store arm/head/etc positions and be able to increment them
 - [ ] theme songs associated with faces
 - [ ] laser pointer ala terminator

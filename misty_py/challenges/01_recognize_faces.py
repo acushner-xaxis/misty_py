@@ -3,14 +3,14 @@ from typing import NamedTuple, Dict
 
 import arrow
 
-from misty_py.api import MistyAPI, MISTY_URL
+from misty_py.api import MistyAPI
 from misty_py.subscriptions import SubPayload, SubType, Actuator, Sub
 from misty_py.misty_ws import EventCallback, UnchangedValue
 from misty_py.utils import async_run
 
 __author__ = 'acushner'
 
-api = MistyAPI(MISTY_URL)
+api = MistyAPI()
 
 questions_comments = '''
 - documentation on how the websockets API actually acts is pretty fragmented

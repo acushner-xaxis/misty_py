@@ -21,6 +21,7 @@ from .utils import *
 
 WIDTH = 480
 HEIGHT = 272
+AUDIO_SIZE_LIMIT = 3 * 2 ** 20  # 3 mb
 
 
 # uvloop.install()
@@ -63,6 +64,9 @@ class PartialAPI(RestAPI):
 # PartialAPIs
 # ======================================================================================================================
 
+def _print_pretty(o):
+    print('\n'.join(map(str, o)))
+
 
 class ImageAPI(PartialAPI):
     """handle pics, video, uploading/downloading images, changing led color, etc"""
@@ -80,7 +84,7 @@ class ImageAPI(PartialAPI):
     def save_video_locally(path, data: BytesIO):
         save_data_locally(path, data, '.mov')
 
-    async def list(self) -> Dict[str, json_obj]:
+    async def list(self, pretty=False) -> Dict[str, json_obj]:
         """
         get images available on device as dict(name=json)
         store in `self.saved_images`
@@ -88,6 +92,8 @@ class ImageAPI(PartialAPI):
         """
         images = await self._get_j('images/list')
         res = self.saved_images = json_obj((i.name, i) for i in images)
+        if pretty:
+            _print_pretty(res)
         return res
 
     async def get(self, file_name: str) -> BytesIO:
@@ -97,10 +103,18 @@ class ImageAPI(PartialAPI):
         res = await self._get('images', FileName=file_name, Base64=False)
         return BytesIO(res.content)
 
-    async def upload(self, file_name: str, width: Optional[int] = None, height: Optional[int] = None,
-                     *, apply_immediately: bool = False, overwrite_existing: bool = True):
-        """upload a local image to misty"""
-        payload = generate_upload_payload(file_name, apply_immediately, overwrite_existing)
+    async def upload(self, file_name: str, *, prefix: str = '', width: Optional[int] = None,
+                     height: Optional[int] = None, apply_immediately: bool = False,
+                     overwrite_existing: bool = True):
+        """
+        NOTE: prefix is busted for now and will not be used. waiting on fix from misty robotics
+
+        upload a local image to misty
+
+        file_name is the name of the file locally
+        prefix, if provided, will be prepended to the name as placed on misty
+        """
+        payload = generate_upload_payload(prefix, file_name, apply_immediately, overwrite_existing)
         payload.add_if_not_none(Width=width, Height=height)
         return await self._post('images', payload)
 
@@ -180,7 +194,7 @@ class AudioAPI(PartialAPI):
         res = await self._get('audio', FileName=file_name)
         return BytesIO(res.content)
 
-    async def list(self) -> Dict[str, json_obj]:
+    async def list(self, pretty=False) -> Dict[str, json_obj]:
         """
         get audio metadata available on device as dict(name=json)
         store in `self.saved_audio`
@@ -188,27 +202,35 @@ class AudioAPI(PartialAPI):
         """
         audio = await self._get_j('audio/list')
         res = self.saved_audio = json_obj((a.name, a) for a in audio)
+        if pretty:
+            _print_pretty(res)
         return res
 
-    async def upload(self, file_name: str, *, apply_immediately: bool = False, overwrite_existing: bool = True):
+    async def upload(self, file_path: str, *, prefix: str = '', apply_immediately: bool = False,
+                     overwrite_existing: bool = True):
         """
+        NOTE: prefix is busted for now and will not be used. waiting on fix from misty robotics
+
         upload data (mp3, wav, not sure what else) to misty
 
         for some reason it's faster to upload and play separately
         rather than set `apply_immediately` on the upload request
-        """
 
-        res = await self._post('audio', generate_upload_payload(file_name, False, overwrite_existing))
+        file_path is the local path to the file
+        prefix, if provided, will be prepended to the name as placed on misty
+        """
+        payload = generate_upload_payload(prefix, file_path, False, overwrite_existing, limit=AUDIO_SIZE_LIMIT)
+        res = await self._post('audio', payload)
         if apply_immediately:
-            await self.play(file_name)
+            await self.play(payload.FileName)
         return res
 
-    async def play(self, file_name: str, volume: int = 100, how_long_secs: Optional[int] = None, *, blocking=False):
+    async def play(self, name: str, volume: int = 100, how_long_secs: Optional[int] = None, blocking=False):
         """play for how long you want to"""
-        name = Path(file_name).name
         payload = dict(FileName=name, Volume=min(max(volume, 1), 100))
         res = await self._post('audio/play', payload)
-        await self._handle_blocking_play_call(name, how_long_secs, blocking)
+        if res.ok:
+            await self._handle_blocking_play_call(name, how_long_secs, blocking)
         return res
 
     async def _handle_blocking_play_call(self, name: str, how_long_secs: float, blocking: bool):
@@ -228,6 +250,7 @@ class AudioAPI(PartialAPI):
             await self._handle_audio_complete(name)
 
     async def _handle_audio_complete(self, name):
+        """subscribe and wait for an audio complete event"""
         async def _wait_one(sp: SubPayload):
             return sp.data.message.metaData.name == name
 
@@ -292,12 +315,14 @@ class FaceAPI(PartialAPI):
         # TODO: add back in once we have misty
         # self.saved_faces = asyncio.run(self.list())
 
-    async def list(self) -> Set[str]:
+    async def list(self, pretty=False) -> Set[str]:
         res = self.saved_faces = set(await self._get_j('faces'))
+        if pretty:
+            _print_pretty(res)
         return res
 
     async def delete(self, *, name: Optional[str] = None, delete_all: bool = False):
-        """rm faces from misty"""
+        """rm face[s] from misty"""
         if bool(delete_all) + bool(name) != 1:
             raise ValueError('set exactly one of `name` or `delete_all`')
 

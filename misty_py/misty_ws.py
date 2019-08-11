@@ -102,6 +102,10 @@ async def debug_handler(sp: SubPayload):
     print(sp)
 
 
+class SubscriptionError(Exception):
+    """represent failed subscription to misty"""
+
+
 class MistyWS(metaclass=InstanceCache):
     """class that manages websocket interactions with misty"""
     _count = count(1)
@@ -114,8 +118,7 @@ class MistyWS(metaclass=InstanceCache):
 
     @staticmethod
     def _init_endpoint(url):
-        res = f'{url.replace("http", "ws", 1)}/pubsub'
-        return res
+        return f'{url.replace("http", "ws", 1)}/pubsub'
 
     async def _send(self, payload: json_obj):
         """simple function to send a bespoke payload via a websocket. useful for debugging"""
@@ -164,7 +167,7 @@ class MistyWS(metaclass=InstanceCache):
         """
         tell misty to stop sending events for this subscription and close the websocket
 
-        can unsubscribe either by `SubType` or `SubId`
+        can unsubscribe either by `SubType`, `SubId`, or str containing the event_name
         """
         print(arrow.utcnow(), 'unsubscribing:', sub_id)
         if isinstance(sub_id, str):
@@ -215,10 +218,12 @@ class MistyWS(metaclass=InstanceCache):
 
             # skip registration message
             if isinstance(o.message, str):
-                if not o.message.startswith('Registration Status: API event registered'):
-                    print('Failed to register:', o)
-                    await sub_id.unsubscribe()
-                continue
+                if o.message.startswith('Registration Status: API event registered'):
+                    continue
+
+                print('Failed to register:', o)
+                await sub_id.unsubscribe()
+                raise SubscriptionError(f'failed to subscribe: {msg}')
 
             sp = self.api.subscription_data[sub_id.sub] = SubPayload.from_data(o, sub_id)
             create_task(handler(sp))

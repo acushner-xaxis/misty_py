@@ -8,12 +8,12 @@ import arrow
 from misty_py.api import MistyAPI
 from misty_py.subscriptions import Actuator
 from misty_py.misty_ws import EventCallback, UnchangedValue
-from misty_py.utils import MISTY_URL, wait_first
+from misty_py.utils import wait_first
 from misty_py.utils.core import async_run
 
 __author__ = 'acushner'
 
-api = MistyAPI(MISTY_URL)
+api = MistyAPI()
 
 
 async def random_simpsons_quote():

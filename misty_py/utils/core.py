@@ -13,11 +13,9 @@ from io import BytesIO
 
 __all__ = (
     'Coords', 'InstanceCache', 'ArmSettings', 'HeadSettings', 'json_obj', 'RestAPI', 'JSONObjOrObjs', 'decode_img',
-    'save_data_locally', 'generate_upload_payload', 'delay', 'MISTY_URL', 'asyncpartial', 'classproperty', 'wait_first',
+    'save_data_locally', 'generate_upload_payload', 'delay', 'asyncpartial', 'classproperty', 'wait_first',
     'async_run', 'format_help'
 )
-
-MISTY_URL = 'http://192.168.86.20'
 
 
 class classproperty:
@@ -221,13 +219,13 @@ class InstanceCache(type):
         return res
 
 
-def encode_data(filename_or_bytes: Union[str, bytes]) -> str:
+def encode_data(filename_or_bytes: Union[str, bytes], limit: int = None) -> str:
     """transform either a filename or bytes to base64 encoding"""
     data = filename_or_bytes
     if isinstance(filename_or_bytes, str):
         with open(filename_or_bytes, 'rb') as f:
             data = f.read()
-    return b64encode(data).decode()
+    return b64encode(data[:limit]).decode()
 
 
 def decode_data(data: Union[str, bytes, BytesIO]) -> BytesIO:
@@ -255,9 +253,15 @@ def save_data_locally(path, data: BytesIO, suffix: str):
         f.write(data.read())
 
 
-def generate_upload_payload(file_name, apply_immediately, overwrite_existing):
-    """upload for audio/images are very similar. this function encapsulates that"""
-    return json_obj(FileName=Path(file_name).name, Data=encode_data(file_name),
+def generate_upload_payload(prefix, file_name, apply_immediately, overwrite_existing, limit=None):
+    """
+    upload for audio/images are very similar. this function encapsulates that
+
+    `limit` can be used with audio - to limit the file size to the current (paltry) 3mb
+    """
+    # return json_obj(FileName=str(Path(prefix) / Path(file_name).name), Data=encode_data(file_name, limit),
+    #                 ImmediatelyApply=apply_immediately, OverwriteExisting=overwrite_existing)
+    return json_obj(FileName=Path(file_name).name, Data=encode_data(file_name, limit),
                     ImmediatelyApply=apply_immediately, OverwriteExisting=overwrite_existing)
 
 
@@ -335,7 +339,7 @@ def async_run(coro):
     run coro and then drain any pending tasks
     a seemingly better substitute for `asyncio.run`
     """
-    asyncio.run(_async_run_helper(coro), debug=True)
+    asyncio.run(_async_run_helper(coro))
 
 # class aobject:
 #     """enable async init of objects"""
