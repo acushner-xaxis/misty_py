@@ -55,8 +55,8 @@ from misty_py.api import MistyAPI
 
 api = MistyAPI()
 await asyncio.gather(
-	api.images.set_led(RGB(0, 255, 0))
-	api.faces.wait_for_training('name')
+    api.images.set_led(RGB(0, 255, 0))
+    api.faces.wait_for_training('name')
 )
 await api.images.set_led()
 ```
@@ -78,7 +78,7 @@ here are some examples:
 
 ```python
 async def debug_handler(sp: SubPayload):
-	print(sp)
+    print(sp)
 
 
 # subscribe to one single higher-level subscription
@@ -119,14 +119,14 @@ when the callback returns a truthy value, the event will be set. useful for figu
 # example of waiting for an audio file with a certain name to complete playing
 
 async def _handle_audio_complete(self, name):
-	"""subscribe and wait for an audio complete event"""
-	async def _wait_name(sp: SubPayload):
-		return sp.data.message.metaData.name == name
+    """subscribe and wait for an audio complete event"""
+    async def _wait_name(sp: SubPayload):
+        return sp.data.message.metaData.name == name
 
-	event = EventCallback(_wait_name)
-	try:
-		async with self.api.ws.sub_unsub(SubType.audio_play_complete, event):
-			await event
-	except asyncio.CancelledError:
-		event.set()
+    event = EventCallback(_wait_name)
+    try:
+        async with self.api.ws.sub_unsub(SubType.audio_play_complete, event):
+            await event
+    except asyncio.CancelledError:
+        event.set()
 ```
