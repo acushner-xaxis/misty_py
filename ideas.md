@@ -1,14 +1,19 @@
 ##### notes/issues:
 - `DisplayOnScreen` in `take_picture` does not work well - just a fuzzy blurry screen image
-- audio in both audio and video recording wasn't working
-    - reboot fixed it
-    - she can, however, recognize her key phrase
+- recording audio is hit or miss
+    - sometimes it works, sometimes it doesn't
+    - keyphrase recog does NOT seem to be affected by this
+- recording sometimes works and then playing just doesn't 
+    - overarching problems: things generally work intermittently 
+    - unlikely she'll be ready in a month
 - if you upload audio to something like `path/audio.wav`, only `path` remains after reboot
     - example:
     - upload `path/audio.wav`
     - play `path/audio.wav`  # success
     - reboot
     - play `path/audio.wav`  # 500 error - clip not there
+- if you request, say, an audio file that doesn't exist - the call times out
+    - should return immediately rather than waiting for a timeout to occur
     
 ##### TODO:
 - [ ] implement RemoveBlinkMappings - BETA
@@ -27,8 +32,10 @@
 - [x] upload a gif
     - gif doesn't animate
 - [ ] implement common colors
+- [ ] integrate with tensorflow face recognition - mimic emotions
 
 ##### random
+- [ ] read subjects of incoming emails
 - [x] improved/clear face training
 - [ ] store arm/head/etc positions and be able to increment them
 - [ ] theme songs associated with faces

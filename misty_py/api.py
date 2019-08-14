@@ -5,6 +5,7 @@ import inspect
 import os
 import textwrap
 from abc import ABC, abstractmethod
+from base64 import b64decode
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial, wraps
 from io import BytesIO
@@ -14,10 +15,9 @@ from typing import Dict, Optional, Set, NamedTuple
 import arrow
 import requests
 
-from misty_py.misty_ws import EventCallback
+from misty_py.misty_ws import EventCallback, MistyWS
 from misty_py.subscriptions import SubType, SubPayload, Sub, HandlerType, FTMsgs
-from .misty_ws import MistyWS
-from .utils import *
+from misty_py.utils import *
 
 WIDTH = 480
 HEIGHT = 272
@@ -68,6 +68,14 @@ def _print_pretty(o):
     print('\n'.join(map(str, o)))
 
 
+def _write_outfile(outfile, content, as_base64):
+    if outfile:
+        if as_base64:
+            content = b64decode(json_obj.from_str(content).result.base64)
+        with open(outfile, 'wb') as f:
+            f.write(content)
+
+
 class ImageAPI(PartialAPI):
     """handle pics, video, uploading/downloading images, changing led color, etc"""
 
@@ -96,11 +104,12 @@ class ImageAPI(PartialAPI):
             _print_pretty(res)
         return res
 
-    async def get(self, file_name: str) -> BytesIO:
+    async def get(self, file_name: str, outfile='', as_base64=False) -> BytesIO:
         """
         get binary data image data from misty
         """
-        res = await self._get('images', FileName=file_name, Base64=False)
+        res = await self._get('images', FileName=file_name, Base64=as_base64)
+        _write_outfile(outfile, res.content, as_base64)
         return BytesIO(res.content)
 
     async def upload(self, file_name: str, *, prefix: str = '', width: Optional[int] = None,
@@ -190,8 +199,9 @@ class AudioAPI(PartialAPI):
         # TODO: add back in once we have misty
         # self.saved_audio = asyncio.run(self.list())
 
-    async def get(self, file_name: str) -> BytesIO:
-        res = await self._get('audio', FileName=file_name)
+    async def get(self, file_name: str, outfile='', *, as_base64=False) -> BytesIO:
+        res = await self._get('audio', FileName=file_name, Base64=as_base64)
+        _write_outfile(outfile, res.content, as_base64)
         return BytesIO(res.content)
 
     async def list(self, pretty=False) -> Dict[str, json_obj]:
@@ -251,6 +261,7 @@ class AudioAPI(PartialAPI):
 
     async def _handle_audio_complete(self, name):
         """subscribe and wait for an audio complete event"""
+
         async def _wait_one(sp: SubPayload):
             return sp.data.message.metaData.name == name
 
@@ -271,14 +282,23 @@ class AudioAPI(PartialAPI):
     async def set_default_volume(self, volume):
         return await self._post('audio/volume', dict(Volume=min(max(volume, 0), 100)))
 
-    async def start_recording(self, filename: str, how_long_secs: Optional[float] = None):
+    async def _handle_blocking_record_call(self, how_long_secs, blocking):
+        if blocking and not how_long_secs:
+            raise ValueError('if you want to block, must provide both `how_long_secs`')
+
+        if how_long_secs is not None:
+            how_long_secs = min(max(how_long_secs, 0), 60)
+            coro = delay(how_long_secs, self.stop_recording())
+            if blocking:
+                await coro
+            else:
+                asyncio.create_task(coro)
+
+    async def record(self, filename: str, how_long_secs: Optional[float] = None, blocking=False):
         """record audio"""
         fn = f'{filename.rstrip(".wav")}.wav'
         res = await self._post('audio/record/start', json_obj(FileName=fn))
-        if how_long_secs is not None:
-            how_long_secs = min(max(how_long_secs, 0), 60)
-            if how_long_secs:
-                asyncio.create_task(delay(how_long_secs, self.stop_recording()))
+        await self._handle_blocking_record_call(how_long_secs, blocking)
         return res
 
     async def stop_recording(self):
@@ -837,3 +857,11 @@ def _create_api_doc():
 MistyAPI.__doc__ = MistyAPI.__doc__.format(partial_api_section=_create_api_doc(),
                                            usage_section='\n    '.join(inspect.getsource(_run_example).splitlines()))
 help(MistyAPI)
+
+
+def __main():
+    return
+
+
+if __name__ == '__main__':
+    __main()
