@@ -1,19 +1,26 @@
 ##### notes/issues:
-- `DisplayOnScreen` in `take_picture` does not work well - just a fuzzy blurry screen image
-- recording audio is hit or miss
+- BUG: `DisplayOnScreen` in `take_picture` does not work well - just a fuzzy blurry screen image
+- BUG: recording audio is hit or miss
     - sometimes it works, sometimes it doesn't
-    - keyphrase recog does NOT seem to be affected by this
-- recording sometimes works and then playing just doesn't 
-    - overarching problems: things generally work intermittently 
-    - unlikely she'll be ready in a month
-- if you upload audio to something like `path/audio.wav`, only `path` remains after reboot
+    - keyphrase recog does NOT seem to be affected by this (i.e., her mic will still pick that up)
+- BUG: if you upload audio to something like `path/audio.wav`, only `path` remains after reboot
     - example:
     - upload `path/audio.wav`
     - play `path/audio.wav`  # success
     - reboot
     - play `path/audio.wav`  # 500 error - clip not there
-- if you request, say, an audio file that doesn't exist - the call times out
+    - all the files are still on the device, misty just doesn't see them
+- BUG: if you request, say, an audio file that doesn't exist - the call times out
     - should return immediately rather than waiting for a timeout to occur
+- BUG: audio recorded on misty cannot be played on misty
+  - the audio plays fine when i download it and play it locally
+    ```text
+    2019-08-14T16:23:53.5536840-07:00|INF|20192602062|5|CommandRequestHandler|REST_API IN Command: /api/audio/play SourceId: a5d74bda-0a61-4bf0-aeb9-a6c00fd2ad7f ArgumentData: {"fileName":"test6.wav","volume":100} 
+    2019-08-14T16:23:53.5536840-07:00|INF|20192602062|5|CommandRequestHandler|{"api":"REST_API","direction":"IN","command":"/api/audio/play","sourceId":"a5d74bda-0a61-4bf0-aeb9-a6c00fd2ad7f","argumentData":{"fileName":"test6.wav","volume":100}} 
+    2019-08-14T16:23:53.5693717-07:00|INF|20192602062|18|RemoteServiceLogger|Play file command 
+    2019-08-14T16:23:53.5850171-07:00|INF|20192602062|22|RemoteServiceLogger|Playing test6.wav with volume 1.0 
+    2019-08-14T16:23:53.6790877-07:00|ERR|20192602062|22|RemoteServiceLogger|Failure playing file: test6.wav 
+    ```
     
 ##### TODO:
 - [ ] implement RemoveBlinkMappings - BETA
@@ -28,16 +35,18 @@
     - [x] easily chain multiple audio files together
     - [x] won't do: upload multiple images/audio files in one call
 - [ ] super blinky eyes
-- [ ] revisit _denormalization settings
+- [x] revisit _denormalization settings
 - [x] upload a gif
     - gif doesn't animate
+- [x] read current arm/head/etc positions
+    - [ ] increment them easily
+    - [ ] return to original state
 - [ ] implement common colors
 - [ ] integrate with tensorflow face recognition - mimic emotions
 
 ##### random
 - [ ] read subjects of incoming emails
 - [x] improved/clear face training
-- [ ] store arm/head/etc positions and be able to increment them
 - [ ] theme songs associated with faces
 - [ ] laser pointer ala terminator
     - [ ] enable with voice command

@@ -4,7 +4,7 @@ import asyncio
 from asyncio import create_task
 from contextlib import asynccontextmanager, suppress
 from itertools import count
-from typing import Dict, NamedTuple, Union, Optional
+from typing import Dict, NamedTuple, Union, Optional, List
 
 import arrow
 import websockets
@@ -84,7 +84,6 @@ class UnchangedValue:
             return abs(p - c) < self._tolerance and p != self._init_val
 
     def clear(self):
-        # self._prev = None
         self._init_val = None
 
 
@@ -129,7 +128,7 @@ class MistyWS(metaclass=InstanceCache):
         return next(self._count)
 
     async def subscribe(self, sub: Union[SubType, LLSubType, Sub], handler: HandlerType = debug_handler,
-                        debounce_ms: int = 250) -> Union[SubId, SubType]:
+                        debounce_ms: int = 250) -> Union[SubId, List[SubId]]:
         """
         subscribe to events from misty
 
@@ -137,8 +136,7 @@ class MistyWS(metaclass=InstanceCache):
         """
         if isinstance(sub, SubType):
             coros = (self.subscribe(s, handler, debounce_ms) for s in sub.lower_level_subs)
-            await asyncio.gather(*coros)
-            return sub
+            return await asyncio.gather(*coros)
 
         if isinstance(sub, LLSubType):
             sub = sub.sub
@@ -202,11 +200,14 @@ class MistyWS(metaclass=InstanceCache):
         context manager to subscribe to an event, wait for something, and, when the exec block's done, unsubscribe
         useful, e.g., for making things blocking
         """
-        sub_id_or_type = await self.subscribe(sub, handler, debounce_ms)
+        sub_id_or_ids = await self.subscribe(sub, handler, debounce_ms)
         try:
-            yield sub_id_or_type
+            yield sub_id_or_ids
         finally:
-            create_task(self.unsubscribe(sub_id_or_type))
+            if not isinstance(sub_id_or_ids, list):
+                sub_id_or_ids = [sub_id_or_ids]
+            for sid in sub_id_or_ids:
+                create_task(self.unsubscribe(sid))
 
     async def _handle(self, ws, handler: HandlerType, sub_id):
         """

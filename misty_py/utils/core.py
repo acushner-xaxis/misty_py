@@ -62,6 +62,7 @@ class ArmSettings(NamedTuple):
     will automatically denormalize to values accepted by misty
 
     -100 = down, 100 = up
+    on misty: 90 is straight down, -90 is straight up (although up doesn't go all the way)
     """
     side: str  # left | right
     position: float
@@ -84,17 +85,20 @@ class HeadSettings(NamedTuple):
     roll: tilt (ear to shoulder)
     yaw: turn left and right
     velocity: how quickly
+
+    using the "position" units, all values sent to misty will be between -5 and 5 for pitch, roll, and yaw
     """
     pitch: Optional[float] = None
     roll: Optional[float] = None
     yaw: Optional[float] = None
-    velocity: Optional[float] = None
+    velocity: Optional[float] = 50
+    units: str = 'position'
 
-    _var_range = dict(pitch=-10, roll=50, yaw=-100, velocity=100)
+    _var_range = dict(pitch=-5, roll=5, yaw=-5, velocity=100)
 
     @property
     def json(self) -> Dict[str, float]:
-        return {k.capitalize(): v for k, v in _denormalize(self).items() if v is not None}
+        return json_obj(((k.capitalize(), v) for k, v in _denormalize(self).items() if v is not None), Units=self.units)
 
 
 # ======================================================================================================================

@@ -351,8 +351,6 @@ class FaceAPI(PartialAPI):
     async def start_detection(self):
         """
         start finding/detecting faces in misty's line of vision
-
-        TODO: subscribe to FaceEvents to figure out when it's done?
         """
         await self._post('faces/detection/start')
 
@@ -363,10 +361,6 @@ class FaceAPI(PartialAPI):
     async def start_training(self, face_id: str):
         """
         start training a particular face
-
-        TODO: subscribe to FaceEvents to figure when done
-        TODO: set up something to alert the user that this is happening
-            - change LED colors, display some text
         """
         return await self._post('faces/training/start', dict(FaceId=face_id))
 
