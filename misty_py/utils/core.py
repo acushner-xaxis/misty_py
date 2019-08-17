@@ -14,7 +14,7 @@ from io import BytesIO
 __all__ = (
     'Coords', 'InstanceCache', 'ArmSettings', 'HeadSettings', 'json_obj', 'RestAPI', 'JSONObjOrObjs', 'decode_img',
     'save_data_locally', 'generate_upload_payload', 'delay', 'asyncpartial', 'classproperty', 'wait_first',
-    'async_run', 'format_help', 'wait_in_order'
+    'async_run', 'format_help', 'wait_in_order', 'wait_for_group'
 )
 
 
@@ -29,7 +29,7 @@ class classproperty:
 def asyncpartial(coro, *args, **kwargs):
     @wraps(coro)
     async def wrapped(*a, **kw):
-        await coro(*(args + a), **{**kwargs, **kw})
+        return await coro(*(args + a), **{**kwargs, **kw})
 
     return wrapped
 
@@ -289,6 +289,14 @@ async def wait_in_order(*coros: Optional[Coroutine]):
             if c:
                 c.close()
         raise
+
+
+async def wait_for_group(*coros):
+    """
+    await all coros simultaneously via gather
+    useful when chaining a bunch of commands together via `wait_in_order`
+    """
+    return await asyncio.gather(*coros)
 
 
 class DonePending(NamedTuple):

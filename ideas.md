@@ -14,13 +14,32 @@
     - should return immediately rather than waiting for a timeout to occur
 - BUG: audio recorded on misty cannot be played on misty
   - the audio plays fine when i download it and play it locally
-    ```text
+
+```text
     2019-08-14T16:23:53.5536840-07:00|INF|20192602062|5|CommandRequestHandler|REST_API IN Command: /api/audio/play SourceId: a5d74bda-0a61-4bf0-aeb9-a6c00fd2ad7f ArgumentData: {"fileName":"test6.wav","volume":100} 
     2019-08-14T16:23:53.5536840-07:00|INF|20192602062|5|CommandRequestHandler|{"api":"REST_API","direction":"IN","command":"/api/audio/play","sourceId":"a5d74bda-0a61-4bf0-aeb9-a6c00fd2ad7f","argumentData":{"fileName":"test6.wav","volume":100}} 
     2019-08-14T16:23:53.5693717-07:00|INF|20192602062|18|RemoteServiceLogger|Play file command 
     2019-08-14T16:23:53.5850171-07:00|INF|20192602062|22|RemoteServiceLogger|Playing test6.wav with volume 1.0 
     2019-08-14T16:23:53.6790877-07:00|ERR|20192602062|22|RemoteServiceLogger|Failure playing file: test6.wav 
-    ```
+```
+- BUG: making concurrent calls to `move_head` and `display` image will result in only one of them being executed
+    - misty will return 200 OK messages for both requests, but...
+    - misty will either change eyes OR move head, but never both. seems like a race condition on your end
+    - debug logs show nothing wrong
+    - sample code that can cause the condition:
+
+```python
+    pos = 80
+    for _ in range(10):
+        pos *= -1
+        await asyncio.gather(
+            api.images.display('e_Sleeping.jpg'),
+            api.movement.move_head(pos, velocity=20),
+        )
+        await asyncio.sleep(2)
+        await api.images.display('e_DefaultContent.jpg')
+```
+- MINOR BUG: can upload gifs, but they don't animate
     
 ##### TODO:
 - [ ] implement RemoveBlinkMappings - BETA
@@ -28,21 +47,22 @@
 - [ ] implement SetBlinkSettings - BETA
 - [x] implement keyword recognition
 - [x] audio complete to use metadata
-- [ ] ON HOLD: change upload to include optional path
-    - [ ] audio
-    - [ ] images
 - [x] face training: implement awesome way
     - [x] easily chain multiple audio files together
     - [x] won't do: upload multiple images/audio files in one call
 - [ ] super blinky eyes
 - [x] revisit _denormalization settings
-- [x] upload a gif
-    - gif doesn't animate
 - [x] read current arm/head/etc positions
     - [ ] increment them easily
     - [ ] return to original state
+- [ ] change to use real asyncio in requests (instead of `requests` library)
 - [ ] implement common colors
 - [ ] integrate with tensorflow face recognition - mimic emotions
+- [ ] ON HOLD: change upload to include optional path
+    - [ ] audio
+    - [ ] images
+- [x] upload a gif
+    - gif doesn't animate
 
 ##### random
 - [ ] read subjects of incoming emails
