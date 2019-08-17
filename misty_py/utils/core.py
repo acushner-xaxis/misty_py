@@ -14,7 +14,7 @@ from io import BytesIO
 __all__ = (
     'Coords', 'InstanceCache', 'ArmSettings', 'HeadSettings', 'json_obj', 'RestAPI', 'JSONObjOrObjs', 'decode_img',
     'save_data_locally', 'generate_upload_payload', 'delay', 'asyncpartial', 'classproperty', 'wait_first',
-    'async_run', 'format_help'
+    'async_run', 'format_help', 'wait_in_order'
 )
 
 
@@ -263,26 +263,56 @@ def generate_upload_payload(prefix, file_name, apply_immediately, overwrite_exis
 
     `limit` can be used with audio - to limit the file size to the current (paltry) 3mb
     """
+    # TODO: add back in when misty supports path prefixes
     # return json_obj(FileName=str(Path(prefix) / Path(file_name).name), Data=encode_data(file_name, limit),
     #                 ImmediatelyApply=apply_immediately, OverwriteExisting=overwrite_existing)
     return json_obj(FileName=Path(file_name).name, Data=encode_data(file_name, limit),
                     ImmediatelyApply=apply_immediately, OverwriteExisting=overwrite_existing)
 
 
-async def delay(how_long_secs, to_run: Coroutine, cb: Optional[Coroutine] = None):
+async def delay(how_long_secs, to_run: Coroutine):
     """
     run `to_run` coroutine after `how_long_secs`
     if provided, `cb` (callback) will be called when done
     """
+    if how_long_secs is None or how_long_secs <= 0:
+        return await to_run
+    return await wait_in_order(asyncio.sleep(how_long_secs), to_run)
+
+
+async def wait_in_order(*coros: Optional[Coroutine]):
+    """await coros in order. return results"""
     try:
-        await asyncio.sleep(how_long_secs)
-        await to_run
-        if cb:
-            await cb
+        return [(await c) if c else None for c in coros]
     except asyncio.CancelledError:
-        to_run.close()
-        if cb:
-            cb.close()
+        for c in coros:
+            if c:
+                c.close()
+        raise
+
+
+class DonePending(NamedTuple):
+    done: Set[asyncio.Future]
+    pending: Set[asyncio.Future]
+
+
+async def wait_first(*coros: Optional[Coroutine], cancel=True, return_when=asyncio.FIRST_COMPLETED) -> DonePending:
+    """
+    wait for the first task to complete (default) or raise an exception.
+
+    by default, cancel all pending futures
+    """
+    coros = [c for c in coros if c]
+    if not coros:
+        return DonePending(set(), set())
+
+    done, pending = await asyncio.wait(coros, return_when=return_when)
+    g = asyncio.gather(*pending)
+    if cancel:
+        g.cancel()
+    with suppress(asyncio.CancelledError):
+        await g
+    return DonePending(done, pending)
 
 
 def format_help(help):
@@ -305,25 +335,6 @@ def format_help(help):
         pp(v)
         print()
     return res
-
-
-class DonePending(NamedTuple):
-    done: Set[asyncio.Future]
-    pending: Set[asyncio.Future]
-
-
-async def wait_first(*coros, cancel=True, return_when=asyncio.FIRST_COMPLETED) -> DonePending:
-    """
-    wait for the first task to complete (default) or raise an exception
-    by default, cancel all pending ones
-    """
-    done, pending = await asyncio.wait(coros, return_when=return_when)
-    g = asyncio.gather(*pending)
-    if cancel:
-        g.cancel()
-    with suppress(asyncio.CancelledError):
-        await g
-    return DonePending(done, pending)
 
 
 async def _await_all():

@@ -10,7 +10,7 @@ from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial, wraps
 from io import BytesIO
 from pathlib import Path
-from typing import Dict, Optional, Set, NamedTuple
+from typing import Dict, Optional, Set, NamedTuple, Coroutine
 
 import arrow
 import requests
@@ -235,29 +235,46 @@ class AudioAPI(PartialAPI):
             await self.play(payload.FileName)
         return res
 
-    async def play(self, name: str, volume: int = 100, how_long_secs: Optional[int] = None, blocking=False):
-        """play for how long you want to"""
+    async def play(self, name: str, volume: int = 100, *, how_long_secs: Optional[int] = None, blocking=False,
+                   on_done: Optional[Coroutine] = None):
+        """
+        play audio for how long you want to
+
+        use `how_long_secs` to interrupt audio after a certain amount of time has elapsed
+        use `blocking` to indicate that this call should not complete until audio is done playing
+        use `on_done` as a callback to indicate what should be done when audio is complete
+        """
         payload = dict(FileName=name, Volume=min(max(volume, 1), 100))
         res = await self._post('audio/play', payload)
         if res.ok:
-            await self._handle_blocking_play_call(name, how_long_secs, blocking)
+            await self._handle_blocking_play_call(name, how_long_secs, blocking, on_done)
         return res
 
-    async def _handle_blocking_play_call(self, name: str, how_long_secs: float, blocking: bool):
+    async def _handle_blocking_play_call(self, name: str, how_long_secs: float, blocking: bool,
+                                         on_done: Optional[Coroutine]):
         """
         handle waiting for audio to finish. we need to either:
 
         - block until the song completes
         - block until either the song completes or the elapsed time has expired
+        - optionally await a callback (`on_done`)
+
+        or:
         - do nothing
         """
-        if how_long_secs is not None:
-            coro = delay(how_long_secs, self.stop_playing())
+
+        force_stop = completed = None
+        if on_done or blocking:
+            completed = wait_in_order(self._handle_audio_complete(name))
+
+        if how_long_secs:
+            force_stop = delay(how_long_secs, self.stop_playing())
+
+        if blocking or on_done or how_long_secs:
+            t = asyncio.create_task(wait_in_order(wait_first(force_stop, completed), on_done))
             if blocking:
-                return await wait_first(coro, self._handle_audio_complete(name))
-            asyncio.create_task(coro)
-        elif blocking:
-            await self._handle_audio_complete(name)
+                return await t
+            return t
 
     async def _handle_audio_complete(self, name):
         """subscribe and wait for an audio complete event"""
