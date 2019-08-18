@@ -1,6 +1,7 @@
 import asyncio
 import json
 from abc import abstractmethod, ABC
+from asyncio import Future
 from contextlib import suppress
 from enum import IntFlag, Enum
 from functools import wraps
@@ -280,7 +281,7 @@ async def delay(how_long_secs, to_run: Coroutine):
     return await wait_in_order(asyncio.sleep(how_long_secs), to_run)
 
 
-async def wait_in_order(*coros: Optional[Coroutine]):
+async def wait_in_order(*coros: Optional[Union[Future, Coroutine]]):
     """await coros in order. return results"""
     try:
         return [(await c) if c else None for c in coros]

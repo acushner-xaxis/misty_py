@@ -12,5 +12,5 @@ setup(
     author_email='adam.cushner@gmail.com',
     description='async rest API implementation for misty robots',
 
-    install_requires=['aioconsole', 'arrow', 'requests', 'websockets', 'Pillow', 'sty'],
+    install_requires=['arrow', 'requests', 'websockets', 'Pillow', 'sty', 'aiohttp', 'cchardet', 'aiodns'],
 )

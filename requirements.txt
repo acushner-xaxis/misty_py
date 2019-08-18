@@ -1,6 +1,8 @@
-aioconsole
 arrow
 requests
 websockets
 Pillow
 sty
+aiohttp
+cchardet
+aiodns

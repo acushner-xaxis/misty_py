@@ -190,6 +190,18 @@ class ImageAPI(PartialAPI):
         res = await self._get('video')
         return BytesIO(res.content)
 
+    async def get_blink_settings(self):
+        return await self._get_j('blink/settings')
+
+    async def set_blinking(self, on=True):
+        return await self._post('blink', json_obj(Blink=on))
+
+    async def set_blink_settings(self, settings: json_obj):
+        return await self._post('blink/settings', settings)
+
+    async def remove_blink_mappings(self, image: str, *images: str):
+        return await self._delete('blink/images', json_obj(BlinkImages=(image,) + images))
+
 
 class AudioAPI(PartialAPI):
     """record, play, change volume, manage audio files"""
@@ -494,7 +506,10 @@ class BatteryInfo(NamedTuple):
 
     @classmethod
     def from_meta(cls, data):
-        return cls(data.chargePercent * 100, data)
+        cp = data.chargePercent
+        if cp:
+            cp *= 100
+        return cls(cp, data)
 
 
 class SystemAPI(PartialAPI):

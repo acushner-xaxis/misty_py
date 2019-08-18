@@ -42,27 +42,28 @@
 - MINOR BUG: can upload gifs, but they don't animate
     
 ##### TODO:
-- [ ] implement RemoveBlinkMappings - BETA
-- [ ] implement SetBlinking - BETA
-- [ ] implement SetBlinkSettings - BETA
-- [x] implement keyword recognition
-- [x] audio complete to use metadata
+- [ ] change to use real asyncio in requests (instead of `requests` library)
+- [ ] figure out what causes audio recording to fail
+- [ ] super blinky eyes
 - [x] face training: implement awesome way
     - [x] easily chain multiple audio files together
     - [x] won't do: upload multiple images/audio files in one call
-- [ ] super blinky eyes
 - [x] revisit _denormalization settings
 - [x] read current arm/head/etc positions
     - [ ] increment them easily
     - [ ] return to original state
-- [ ] change to use real asyncio in requests (instead of `requests` library)
 - [ ] implement common colors
 - [ ] integrate with tensorflow face recognition - mimic emotions
-- [ ] ON HOLD: change upload to include optional path
+- [ ] ON HOLD: change upload to include optional path (bug)
     - [ ] audio
     - [ ] images
 - [x] upload a gif
     - gif doesn't animate
+- [x] implement RemoveBlinkMappings - BETA
+- [x] implement SetBlinking - BETA
+- [x] implement SetBlinkSettings - BETA
+- [x] implement keyword recognition
+- [x] audio complete to use metadata
 
 ##### random
 - [ ] read subjects of incoming emails

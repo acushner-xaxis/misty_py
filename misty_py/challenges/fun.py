@@ -47,7 +47,7 @@ def search():
     """have misty look around and scan her environment"""
 
 
-async def nod(pitch=100, roll=0, yaw=0, velocity=100, n_times=6):
+async def nod(pitch=40, roll=0, yaw=0, velocity=100, n_times=6):
     """have misty nod up and down"""
     for _ in range(n_times):
         print(pitch)
@@ -97,20 +97,6 @@ async def blinky():
     """make a super blinky eye image out of an existing one"""
 
 
-async def whats_happening():
-    # res = await api.audio.play('from_google.mp3', volume=10, blocking=True, how_long_secs=100)
-    # res = await api.audio.play('tada_win31.mp3', volume=80, blocking=True, how_long_secs=.5)
-    # res = await api.audio.play('tada_win31.mp3', volume=80, blocking=True, how_long_secs=.5)
-    # res = await api.audio.play('tada_win31.mp3', volume=80, blocking=True, how_long_secs=4)
-    # res = await api.audio.play('tada_win31.mp3', volume=80, blocking=True, how_long_secs=.5)
-    res = await api.audio.play('smooth_jazz_speech.mp3', volume=80, blocking=True)
-    res = await api.audio.play('smooth_jazz_will_be_deployed.mp3', volume=80, blocking=True)
-    # res = await api.audio.play('tada_win31.mp3', volume=80, blocking=True, how_long_secs=.5)
-
-    print(arrow.utcnow())
-    return res
-
-
 async def wait_play():
     coros = (asyncio.sleep(n) for n in range(1, 100))
     d, p = await wait_first(*coros)
@@ -144,16 +130,17 @@ async def move_arms(l_max=50, r_max=50, velocity=60, n_times=6):
     await _run_n(_move, n_times)
 
 
-async def play(fn, how_long=None, n_times=20):
+async def smooth_jazz():
     async def cancel(_g):
         with suppress(asyncio.CancelledError):
             _g.cancel()
             await _g
 
-    await api.movement.move_head(0, 0, 0, velocity=40)
     p = asyncpartial(api.audio.play, blocking=True)
+
+    await api.movement.move_head(0, 0, 0, velocity=40)
     await p('smooth_jazz_will_be_deployed.mp3')
-    g = asyncio.gather(move_head(velocity=100, roll_max=50, n_times=n_times), move_arms(n_times=n_times))
+    g = asyncio.gather(move_head(velocity=100, roll_max=50, n_times=100), move_arms(n_times=100))
     coros = (
         wait_for_group(
             p('smooth_jazz.mp3'),
