@@ -2,10 +2,12 @@ from setuptools import setup
 
 setup(
     name='misty_py',
-    version='0.9.14',
-    packages=['misty_py', 'misty_py.utils'],
+    version='0.9.15',
+    packages=['misty_py', 'misty_py.utils', 'misty_py.apis'],
     package_dir={'misty_py': 'misty_py',
-                 'misty_py.utils': 'misty_py/utils'},
+                 'misty_py.utils': 'misty_py/utils',
+                 'misty_py.apis': 'misty_py/apis'
+                 },
     url='https://github.com/acushner-xaxis/misty_py',
     license='MIT',
     author='adam cushner',

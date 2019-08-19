@@ -43,18 +43,19 @@
 ##### TODO:
 - [x] CAN'T SOLVE: figure out what causes audio recording to fail
 - [x] super blinky eyes
+- [x] read current arm/head/etc positions
+    - [ ] normalize existing states
+    - [ ] increment them easily
+    - [ ] return to original state
+- [ ] implement common colors
+- [ ] ON HOLD: change upload to include optional path (bug)
+    - [ ] audio
+    - [ ] images
+- [ ] integrate with tensorflow face recognition - mimic emotions
 - [x] face training: implement awesome way
     - [x] easily chain multiple audio files together
     - [x] won't do: upload multiple images/audio files in one call
 - [x] revisit _denormalization settings
-- [x] read current arm/head/etc positions
-    - [ ] increment them easily
-    - [ ] return to original state
-- [ ] implement common colors
-- [ ] integrate with tensorflow face recognition - mimic emotions
-- [ ] ON HOLD: change upload to include optional path (bug)
-    - [ ] audio
-    - [ ] images
 - [x] upload a gif
     - gif doesn't animate
 - [x] implement RemoveBlinkMappings - BETA
