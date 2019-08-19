@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='misty_py',
-    version='0.9.12',
+    version='0.9.14',
     packages=['misty_py', 'misty_py.utils'],
     package_dir={'misty_py': 'misty_py',
                  'misty_py.utils': 'misty_py/utils'},
@@ -12,5 +12,5 @@ setup(
     author_email='adam.cushner@gmail.com',
     description='async rest API implementation for misty robots',
 
-    install_requires=['arrow', 'requests', 'websockets', 'Pillow', 'sty', 'aiohttp', 'cchardet', 'aiodns'],
+    install_requires=['arrow', 'requests', 'websockets', 'Pillow', 'sty']
 )
