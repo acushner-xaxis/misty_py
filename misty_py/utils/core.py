@@ -15,8 +15,12 @@ from io import BytesIO
 __all__ = (
     'Coords', 'InstanceCache', 'ArmSettings', 'HeadSettings', 'json_obj', 'RestAPI', 'JSONObjOrObjs', 'decode_img',
     'save_data_locally', 'generate_upload_payload', 'delay', 'asyncpartial', 'classproperty', 'wait_first',
-    'async_run', 'format_help', 'wait_in_order', 'wait_for_group'
+    'async_run', 'format_help', 'wait_in_order', 'wait_for_group', 'first'
 )
+
+
+def first(v):
+    return next(iter(v))
 
 
 class classproperty:

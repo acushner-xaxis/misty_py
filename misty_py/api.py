@@ -7,16 +7,16 @@ import textwrap
 from abc import ABC, abstractmethod
 from base64 import b64decode
 from concurrent.futures.thread import ThreadPoolExecutor
+from contextlib import suppress
 from functools import partial, wraps
 from io import BytesIO
-from pathlib import Path
 from typing import Dict, Optional, Set, NamedTuple, Coroutine
 
 import arrow
 import requests
 
 from misty_py.misty_ws import EventCallback, MistyWS
-from misty_py.subscriptions import SubType, SubPayload, Sub, HandlerType, FTMsgs
+from misty_py.subscriptions import SubType, SubPayload, Sub, HandlerType, FTMsgs, Actuator
 from misty_py.utils import *
 
 WIDTH = 480
@@ -498,6 +498,28 @@ class MovementAPI(PartialAPI):
     async def drive_arc(self, heading_degrees: float, radius_m: float, time_ms: float, *, reverse: bool = False):
         payload = json_obj(Heading=heading_degrees * -1, Radius=radius_m, TimeMs=time_ms, Reverse=reverse)
         return await self._post('drive/arc', payload)
+
+    async def get_actuator_positions(self) -> Dict[Actuator, float]:
+        res: Dict[Sub, float] = {}
+        submitted = False
+
+        async def _wait_one(sp: SubPayload):
+            nonlocal expected_sub_ids
+            if not submitted:
+                return False
+            expected_sub_ids -= {sp.sub_id}
+            with suppress(Exception):
+                res[sp.sub_id.sub] = sp.data.message.value
+            await sp.sub_id.unsubscribe()
+            return not expected_sub_ids
+
+        ecb = EventCallback(_wait_one)
+
+        expected_sub_ids = set(await self.api.ws.subscribe(SubType.actuator_position, ecb))
+        submitted = True
+        await ecb
+
+        return {Actuator(first(sub.ec).value): v for sub, v in res.items()}
 
 
 class BatteryInfo(NamedTuple):

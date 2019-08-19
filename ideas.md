@@ -1,8 +1,7 @@
 ##### notes/issues:
 - BUG: `DisplayOnScreen` in `take_picture` does not work well - just a fuzzy blurry screen image
-- BUG: recording audio is hit or miss
-    - sometimes it works, sometimes it doesn't
-    - keyphrase recog does NOT seem to be affected by this (i.e., her mic will still pick that up)
+- BUG: recording audio works and then it doesn't. no errors as to why
+    - really annoying trying to have interactions with people when you can't record them
 - BUG: if you upload audio to something like `path/audio.wav`, only `path` remains after reboot
     - example:
     - upload `path/audio.wav`
@@ -42,9 +41,8 @@
 - MINOR BUG: can upload gifs, but they don't animate
     
 ##### TODO:
-- [ ] change to use real asyncio in requests (instead of `requests` library)
-- [ ] figure out what causes audio recording to fail
-- [ ] super blinky eyes
+- [x] CAN'T SOLVE: figure out what causes audio recording to fail
+- [x] super blinky eyes
 - [x] face training: implement awesome way
     - [x] easily chain multiple audio files together
     - [x] won't do: upload multiple images/audio files in one call
@@ -64,6 +62,7 @@
 - [x] implement SetBlinkSettings - BETA
 - [x] implement keyword recognition
 - [x] audio complete to use metadata
+- [x] WON'T DO: change to use aiohttp instead of `requests` library
 
 ##### random
 - [ ] read subjects of incoming emails
