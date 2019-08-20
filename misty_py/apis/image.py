@@ -1,11 +1,34 @@
 import asyncio
+from contextlib import asynccontextmanager
 from io import BytesIO
-from typing import Dict, Optional
+from typing import Dict, Optional, NamedTuple, Union
 
 from misty_py.apis.base import PartialAPI, print_pretty, write_outfile
 from misty_py.utils import save_data_locally, json_obj, generate_upload_payload, RGB, delay
 
 __author__ = 'acushner'
+
+
+class BlinkSettings(NamedTuple):
+    closed_eye_min_ms: int = None
+    closed_eye_max_ms: int = None
+    open_eye_min_ms: int = None
+    open_eye_max_ms: int = None
+    blink_image_map: dict = None
+
+    @classmethod
+    def from_json(cls, data):
+        return cls(data.closedEyeMinMs, data.closedEyeMaxMs, data.openEyeMinMs, data.openEyeMaxMs, data.blinkImages)
+
+    @property
+    def json(self):
+        return json_obj.from_not_none(
+            closedEyeMinMs=self.closed_eye_min_ms,
+            closedEyeMaxMs=self.closed_eye_max_ms,
+            openEyeMinMs=self.open_eye_min_ms,
+            openEyeMaxMs=self.open_eye_max_ms,
+            blinkImages=self.blink_image_map
+        )
 
 
 class ImageAPI(PartialAPI):
@@ -117,17 +140,73 @@ class ImageAPI(PartialAPI):
         res = await self._get('video')
         return BytesIO(res.content)
 
-    async def get_blink_settings(self):
-        return await self._get_j('blink/settings')
+    async def get_blink_settings(self) -> BlinkSettings:
+        return BlinkSettings.from_json(await self._get_j('blink/settings'))
 
     async def set_blinking(self, on=True):
         return await self._post('blink', json_obj(Blink=on))
 
-    async def set_blink_settings(self, settings: json_obj):
+    async def set_blink_settings(self, settings: Union[BlinkSettings, json_obj]):
+        if isinstance(settings, BlinkSettings):
+            settings = settings.json
         return await self._post('blink/settings', settings)
 
     async def remove_blink_mappings(self, image: str, *images: str):
         return await self._delete('blink/images', json_obj(BlinkImages=(image,) + images))
+
+    @asynccontextmanager
+    async def patch_blink_settings(self, settings: BlinkSettings):
+        """temporarily set blink settings to something different and then reset to original"""
+        orig = await self.get_blink_settings()
+        try:
+            await self.set_blink_settings(settings)
+            yield
+        finally:
+            await self.set_blink_settings(orig)
+
+
+default_eye_params = {
+    "closedEyeMaxMs": 200,
+    "closedEyeMinMs": 100,
+    "openEyeMaxMs": 8000,
+    "openEyeMinMs": 1000
+}
+
+default_eye_params_full = {
+    "blinkImages": {
+        "e_Amazement.jpg": "e_SystemBlinkLarge.jpg",
+        "e_Anger.jpg": "e_SystemBlinkStandard.jpg",
+        "e_ApprehensionConcerned.jpg": "e_SystemBlinkStandard.jpg",
+        "e_ContentLeft.jpg": "e_SystemBlinkStandard.jpg",
+        "e_ContentRight.jpg": "e_SystemBlinkStandard.jpg",
+        "e_DefaultContent.jpg": "e_SystemBlinkStandard.jpg",
+        "e_Disoriented.jpg": "e_SystemBlinkStandard.jpg",
+        "e_EcstacyStarryEyed.jpg": "e_SystemBlinkLarge.jpg",
+        "e_Fear.jpg": "e_SystemBlinkStandard.jpg",
+        "e_Joy.jpg": "e_SystemBlinkStandard.jpg",
+        "e_Joy2.jpg": "e_SystemBlinkStandard.jpg",
+        "e_JoyGoofy2.jpg": "e_SystemBlinkLarge.jpg",
+        "e_Love.jpg": "e_SystemBlinkStandard.jpg",
+        "e_Rage.jpg": "e_SystemBlinkLarge.jpg",
+        "e_Rage3.jpg": "e_SystemBlinkLarge.jpg",
+        "e_Rage4.jpg": "e_SystemBlinkLarge.jpg",
+        "e_Sadness.jpg": "e_SystemBlinkStandard.jpg",
+        "e_Sleepy.jpg": "e_SystemBlinkStandard.jpg",
+        "e_Sleepy2.jpg": "e_SystemBlinkStandard.jpg",
+        "e_Sleepy3.jpg": "e_SystemBlinkStandard.jpg",
+        "e_Sleepy4.jpg": "e_SystemBlinkStandard.jpg",
+        "e_Surprise.jpg": "e_SystemBlinkLarge.jpg",
+        "e_SystemCamera.jpg": "e_SystemBlinkStandard.jpg",
+        "e_Terror.jpg": "e_SystemBlinkLarge.jpg",
+        "e_Terror2.jpg": "e_SystemBlinkLarge.jpg",
+        "e_TerrorLeft.jpg": "e_SystemBlinkLarge.jpg",
+        "e_TerrorRight.jpg": "e_SystemBlinkLarge.jpg"
+    },
+    "closedEyeMaxMs": 200,
+    "closedEyeMinMs": 100,
+    "openEyeMaxMs": 8000,
+    "openEyeMinMs": 1000
+}
 
 
 def __main():

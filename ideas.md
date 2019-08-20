@@ -44,7 +44,7 @@
 - [x] CAN'T SOLVE: figure out what causes audio recording to fail
 - [x] super blinky eyes
 - [x] read current arm/head/etc positions
-    - [ ] normalize existing states
+    - [x] normalize existing states
     - [ ] increment them easily
     - [ ] return to original state
 - [ ] implement common colors

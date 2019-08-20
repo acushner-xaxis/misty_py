@@ -3,7 +3,6 @@ import json
 from abc import abstractmethod, ABC
 from asyncio import Future
 from contextlib import suppress
-from enum import IntFlag, Enum
 from functools import wraps
 from pathlib import Path
 from typing import NamedTuple, Dict, Optional, Union, List, Set, Any, Coroutine
@@ -13,7 +12,7 @@ from base64 import b64decode, b64encode
 from io import BytesIO
 
 __all__ = (
-    'Coords', 'InstanceCache', 'ArmSettings', 'HeadSettings', 'json_obj', 'RestAPI', 'JSONObjOrObjs', 'decode_img',
+    'Coords', 'InstanceCache', 'json_obj', 'RestAPI', 'JSONObjOrObjs', 'decode_img',
     'save_data_locally', 'generate_upload_payload', 'delay', 'asyncpartial', 'classproperty', 'wait_first',
     'async_run', 'format_help', 'wait_in_order', 'wait_for_group', 'first'
 )
@@ -49,61 +48,6 @@ class Coords(NamedTuple):
     @staticmethod
     def format(*coords: 'Coords'):
         return ','.join(map(str, coords))
-
-
-def _denormalize(obj) -> Dict[str, float]:
-    """
-    transform values generally in the range [-100.0, 100] to values misty is expecting
-
-    this function is not in a base class due to NamedTuple's custom mro setup
-    """
-    attrs = ((k, v) for k, v in obj._var_range.items() if getattr(obj, k) is not None)
-    return dict((k, getattr(obj, k) / 100 * v) for k, v in attrs)
-
-
-class ArmSettings(NamedTuple):
-    """
-    all vals in range [-100.0, 100.0]
-    will automatically denormalize to values accepted by misty
-
-    -100 = down, 100 = up
-    on misty: 90 is straight down, -90 is straight up (although up doesn't go all the way)
-    """
-    side: str  # left | right
-    position: float
-    velocity: float = 100
-
-    _var_range = dict(position=-90, velocity=10)
-
-    @property
-    def json(self) -> Dict[str, float]:
-        side = self.side.lower()
-        return {f'{side}Arm{k.capitalize()}': v for k, v in _denormalize(self).items()}
-
-
-class HeadSettings(NamedTuple):
-    """
-    all vals in range [-100.0, 100.0]
-    will automatically denormalize to values accepted by misty
-
-    pitch: up and down
-    roll: tilt (ear to shoulder)
-    yaw: turn left and right
-    velocity: how quickly
-
-    using the "position" units, all values sent to misty will be between -5 and 5 for pitch, roll, and yaw
-    """
-    pitch: Optional[float] = None
-    roll: Optional[float] = None
-    yaw: Optional[float] = None
-    velocity: Optional[float] = 50
-    units: str = 'position'
-
-    _var_range = dict(pitch=-5, roll=5, yaw=-5, velocity=100)
-
-    @property
-    def json(self) -> Dict[str, float]:
-        return json_obj(((k.capitalize(), v) for k, v in _denormalize(self).items() if v is not None), Units=self.units)
 
 
 # ======================================================================================================================

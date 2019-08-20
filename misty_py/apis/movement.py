@@ -1,11 +1,11 @@
 import asyncio
 from contextlib import suppress
-from typing import Optional, Dict, NamedTuple
+from typing import Optional, Dict, NamedTuple, List
 
 from misty_py.apis.base import PartialAPI
 from misty_py.misty_ws import EventCallback
 from misty_py.subscriptions import Actuator, Sub, SubPayload, SubType
-from misty_py.utils import json_obj, ArmSettings, HeadSettings, first
+from misty_py.utils import json_obj, first
 
 __author__ = 'acushner'
 
@@ -112,7 +112,24 @@ class MovementAPI(PartialAPI):
         return {k: calibrations[k].normalize(v) for k, v in res.items()}
 
 
+# ======================================================================================================================
+# CALIBRATION AND NORMALIZATION
+# the whole point of this area is dealing with misty's crazy/varying levels for each of her actuator positions.
+# if you look at the below `default_actuator_calibrations`, you can see what i mean.
+#
+# these objects/calcs allow the ability to offset current positions easily without having to know,
+# e.g., that the range of pitch is roughly -36 up (negative for up?!), to -6 when set to 0 (what?), to
+# +22 for down (positive for down?!)
+#
+# instead, all you need to know is that, from misty's perspective, 100 = up/right and -100 = down/left
+# ======================================================================================================================
+
 class PosZeroNeg(NamedTuple):
+    """
+    actuator positions in degrees when misty is set to extreme values
+
+    used to help normalize the various actuator settings in degrees to a range of [-100, 100]
+    """
     pos: float  # misty value when setting to 100 via the api
     zero: float  # misty value when setting to 0 via the api
     neg: float  # misty value when setting to -100 via the api
@@ -123,7 +140,15 @@ class PosZeroNeg(NamedTuple):
         return -abs(self._normalize(self.neg, val))
 
     def _normalize(self, end, val):
-        return (val - self.zero) / (end - self.zero)
+        return (val - self.zero) / (end - self.zero) * 100
+
+    def denormalize(self, val):
+        if val > 0:
+            return self._denormalize(self.pos, val)
+        return self._denormalize(self.neg, val)
+
+    def _denormalize(self, end, val):
+        return abs(val) / 100 * (end - self.zero) + self.zero
 
 
 async def calibrate_misty():
@@ -193,8 +218,67 @@ def _get_calibrated_actuator_positions() -> Dict[Actuator, PosZeroNeg]:
     return {Actuator[name]: PosZeroNeg(*vals) for name, vals in actuator_calibrations.items()}
 
 
+class HeadSettings(NamedTuple):
+    """
+    all vals in range [-100.0, 100.0]
+    will automatically denormalize to values accepted by misty
+
+    pitch: up and down
+    roll: tilt (ear to shoulder)
+    yaw: turn left and right
+    velocity: how quickly
+
+    using the "position" units, all values sent to misty will be between -5 and 5 for pitch, roll, and yaw
+    """
+    pitch: Optional[float] = None
+    roll: Optional[float] = None
+    yaw: Optional[float] = None
+    velocity: Optional[float] = 50
+    units: str = 'degrees'
+
+    @property
+    def json(self) -> Dict[str, float]:
+        names = [name for name in 'pitch roll yaw'.split() if getattr(self, name) is not None]
+        if not names:
+            return {}
+        return json_obj(Velocity=self.velocity, Units=self.units, **self._get_denormalized(self, names))
+
+    @staticmethod
+    def _get_denormalized(obj, names: List[str]):
+        actuators = [Actuator[n] for n in names]
+        aps = _get_calibrated_actuator_positions()
+        return json_obj((a.name.capitalize(), aps[a].denormalize(getattr(obj, a.name))) for a in actuators)
+
+
+class ArmSettings(NamedTuple):
+    """
+    all vals in range [-100.0, 100.0]
+    will automatically denormalize to values accepted by misty
+
+    -100 = down, 100 = up
+    on misty: 90 is straight down, -90 is straight up (although up doesn't go all the way)
+    """
+    side: str  # left | right
+    position: float
+    velocity: float = 100
+
+    @property
+    def json(self) -> Dict[str, float]:
+        if self.position is None or not self.velocity:
+            return {}
+        side = self.side.lower()
+        aps = _get_calibrated_actuator_positions()
+        res = {
+            f'{side}ArmPosition': aps[Actuator[f'{side}_arm']].denormalize(self.position),
+            f'{side}ArmVelocity': self.velocity / 10
+        }
+        print(res)
+        return res
+
+
 def __main():
-    print(asyncio.run(calibrate_misty()))
+    # print(asyncio.run(calibrate_misty()))
+    print(ArmSettings('left', -50, 50).json)
 
 
 if __name__ == '__main__':
