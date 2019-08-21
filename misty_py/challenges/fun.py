@@ -21,10 +21,6 @@ def search():
     """have misty look around and scan her environment"""
 
 
-async def blinky():
-    """make a super blinky eye image out of an existing one"""
-
-
 async def dump_debug_info():
     cur_date = arrow.now().format('YYYYMMDD')
     path = f'/tmp/{cur_date}.cushner.'

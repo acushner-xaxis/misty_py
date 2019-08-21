@@ -5,6 +5,22 @@ from misty_py.utils import RestAPI, JSONObjOrObjs, json_obj
 
 __author__ = 'acushner'
 
+WIDTH = 480
+HEIGHT = 272
+AUDIO_SIZE_LIMIT = 3 * 2 ** 20  # 3 mb
+
+
+def print_pretty(o):
+    print('\n'.join(map(str, o)))
+
+
+def write_outfile(outfile, content, as_base64):
+    if outfile:
+        if as_base64:
+            content = b64decode(json_obj.from_str(content).result.base64)
+        with open(outfile, 'wb') as f:
+            f.write(content)
+
 
 # noinspection PyProtectedMember
 class PartialAPI(RestAPI):
@@ -42,18 +58,3 @@ def __main():
 
 if __name__ == '__main__':
     __main()
-WIDTH = 480
-HEIGHT = 272
-AUDIO_SIZE_LIMIT = 3 * 2 ** 20  # 3 mb
-
-
-def print_pretty(o):
-    print('\n'.join(map(str, o)))
-
-
-def write_outfile(outfile, content, as_base64):
-    if outfile:
-        if as_base64:
-            content = b64decode(json_obj.from_str(content).result.base64)
-        with open(outfile, 'wb') as f:
-            f.write(content)

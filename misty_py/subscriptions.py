@@ -145,10 +145,19 @@ class Actuator(LLSubType):
         return SubType.actuator_position
 
 
-# class TimeOfFlight(LLSubType):
-#     @classproperty
-#     def _sub_type(cls) -> SubType:
-#         return SubType.time_of_flight
+class TimeOfFlight(LLSubType):
+    right = 'TOF_Right'
+    center = 'TOF_Center'
+    left = 'TOF_Left'
+    back = 'TOF_Back'
+    down_front_right = 'TOF_DownFrontRight'
+    down_front_left = 'TOF_DownFrontLeft'
+    down_back_right = 'TOF_DownBackRight'
+    down_back_left = 'TOF_DownBackLeft'
+
+    @classproperty
+    def _sub_type(cls) -> SubType:
+        return SubType.time_of_flight
 
 
 class IMU(LLSubType):
