@@ -30,8 +30,7 @@ class SystemAPI(PartialAPI):
     async def clear_display_text(self):
         return await self._post('text/clear')
 
-    @property
-    async def wifi(self) -> Dict[str, str]:
+    async def get_wifi_networks(self) -> Dict[str, str]:
         networks = await self._get_j('networks')
         return {n.ssid: n for n in networks}
 

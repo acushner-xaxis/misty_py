@@ -114,7 +114,7 @@ class MovementAPI(PartialAPI):
 
 # ======================================================================================================================
 # CALIBRATION AND NORMALIZATION
-# the whole point of this area is dealing with misty's crazy/varying levels for each of her actuator positions.
+# the whole point of this area is dealing with misty's crazy/varying values for each of her actuator positions.
 # if you look at the below `default_actuator_calibrations`, you can see what i mean.
 #
 # these objects/calcs allow the ability to offset current positions easily without having to know,
@@ -148,13 +148,14 @@ class PosZeroNeg(NamedTuple):
         return self._denormalize(self.neg, val)
 
     def _denormalize(self, end, val):
-        return abs(val) / 100 * (end - self.zero) + self.zero
+        res = abs(val) / 100 * (end - self.zero) + self.zero
+        if res < end < 0 or res > end > 0:
+            res = end
+        return res
 
 
 async def calibrate_misty():
-    """
-    move misty's actuators to extreme positions and record the values
-    """
+    """move misty's actuators to extreme positions and record the values"""
     from misty_py.api import MistyAPI
     api = MistyAPI()
     res = {}

@@ -157,7 +157,19 @@ class RestAPI(ABC):
 
 
 class InstanceCache(type):
-    """create only one instance per args passed to class"""
+    """
+    singleton-ish metaclass
+
+    create one instance per args used to instantiate class:
+    >>> class A(metaclass=InstanceCache)
+    >>>     def __init__(self, jeb):
+    >>>         pass
+    >>> a1 = A('abcd')
+    >>> a2 = A('abcd')
+    >>> a3 = A('6')
+    >>> a1 is a2  # True
+    >>> a1 is a3  # False
+    """
 
     def __new__(mcs, name, bases, body):
         cls = super().__new__(mcs, name, bases, body)
@@ -249,6 +261,7 @@ async def wait_for_group(*coros):
 
 
 class DonePending(NamedTuple):
+    """futures that have completed and futures that are still pending"""
     done: Set[asyncio.Future]
     pending: Set[asyncio.Future]
 
@@ -274,8 +287,11 @@ async def wait_first(*coros: Optional[Coroutine], cancel=True, return_when=async
 
 def format_help(help):
     """
-    parse json from misty's help in a useful way
-    print the values nicely
+    make misty's help information more accessible
+        - group methods via their `apiCommandGroup`
+        - print the values nicely
+
+    return the dict
     """
     res = defaultdict(list)
     for method, commands in help.items():
@@ -284,7 +300,7 @@ def format_help(help):
             res[cmd.apiCommand.apiCommandGroup].append((method, cmd))
 
     def pp(l):
-        for method, d in l:
+        for method, d in sorted(l):
             print(f'{d.baseApiCommand}: {method} {d.endpoint}')
 
     for k, v in res.items():
