@@ -1,6 +1,8 @@
 import asyncio
 from contextlib import suppress, asynccontextmanager
-from typing import Optional, Dict, NamedTuple, List
+from typing import Optional, Dict, NamedTuple, List, Union
+
+import arrow
 
 from misty_py.apis.base import PartialAPI
 from misty_py.misty_ws import EventCallback
@@ -8,6 +10,8 @@ from misty_py.subscriptions import Actuator, Sub, SubPayload
 from misty_py.utils import json_obj, first
 
 __author__ = 'acushner'
+
+ActuatorVals = Dict[Actuator, float]
 
 
 class HeadSettings(NamedTuple):
@@ -40,9 +44,9 @@ class HeadSettings(NamedTuple):
         aps = _get_calibrated_actuator_positions()
         return json_obj((a.name.capitalize(), aps[a].denormalize(getattr(obj, a.name))) for a in actuators)
 
-    def increment(self, act_vals: Dict[Actuator, float]):
+    def increment(self, act_vals: ActuatorVals):
         cur_vals = ((name, getattr(self, name)) for name in 'pitch roll yaw'.split())
-        new_vals = {name: val if val is None else val + act_vals[Actuator[name]]
+        new_vals = {name: val if val is None else min(100, max(-100, val + act_vals[Actuator[name]]))
                     for name, val in cur_vals}
         return type(self)(**new_vals, velocity=self.velocity)
 
@@ -75,15 +79,61 @@ class ArmSettings(NamedTuple):
     def invalid(self) -> bool:
         return self.position is None or not self.velocity
 
-    def increment(self, act_vals: Dict[Actuator, float]):
+    def increment(self, act_vals: ActuatorVals):
         if self.invalid:
             return self
         a = Actuator[f'{self.side.lower()}_arm']
-        return type(self)(self.side, self.position + act_vals[a], self.velocity)
+        return type(self)(self.side, min(100, max(-100, self.position + act_vals[a])), self.velocity)
+
+
+_ActuatorCache: ActuatorVals
+
+
+class _ActuatorCache(dict):
+    """
+    cache misty's actuator values so we don't have to look them up every incremental movement call.
+
+    getting misty's actuator values can take anywhere from 100 to 2000ms, usually around 300ms
+    """
+    def __init__(self, min_update_secs):
+        super().__init__()
+        self._last_update = arrow.utcnow().shift(days=-1)
+        self._min_update_secs = min_update_secs
+
+    def update_from_settings(self, settings: Union[ArmSettings, HeadSettings]):
+        if isinstance(settings, HeadSettings):
+            self._update_from_head_settings(settings)
+        else:
+            self._update_from_arms_settings(settings)
+
+    def _update_from_head_settings(self, settings: HeadSettings):
+        for n in 'pitch roll yaw'.split():
+            val = getattr(settings, n)
+            if val is not None:
+                self[Actuator[n]] = val
+
+    def _update_from_arms_settings(self, settings: ArmSettings):
+        if settings.invalid:
+            return
+        self[Actuator[f'{settings.side.lower()}_arm']] = settings.position
+
+    def by_actuators(self, *actuators: Actuator):
+        return {a: self[a] for a in actuators}
+
+    def set(self, d):
+        self.update(d)
+        self._last_update = arrow.utcnow()
+
+    @property
+    def update_needed(self):
+        return arrow.utcnow().shift(seconds=-self._min_update_secs) > self._last_update
+
+
+_actuator_cache = _ActuatorCache(60)
 
 
 class MovementAPI(PartialAPI):
-    """specifically control head, arms, driving movement, etc"""
+    """control head, arms, driving, etc"""
 
     async def drive(self, linear_vel_pct: int = 0, angular_vel_pct: int = 0, time_ms: Optional[int] = None):
         """
@@ -117,7 +167,11 @@ class MovementAPI(PartialAPI):
         """use ArmSettings to set misty's arm positions"""
         if increment:
             act_vals = await self.get_actuator_values(Actuator.left_arm, Actuator.right_arm)
-            settings = (s.increment(act_vals) for s in settings)
+            settings = [s.increment(act_vals) for s in settings]
+
+        for s in settings:
+            _actuator_cache.update_from_settings(s)
+
         payload = {k: v for arm in settings for k, v in arm.json.items()}
         if payload:
             return await self._post('arms/set', payload)
@@ -137,9 +191,11 @@ class MovementAPI(PartialAPI):
         if increment:
             settings = settings.increment(await self.get_actuator_values(Actuator.pitch, Actuator.roll, Actuator.yaw))
 
+        _actuator_cache.update_from_settings(settings)
+
         return await self._post('head', settings.json)
 
-    async def _move_via_actuator_vals(self, act_val_pairs: Dict[Actuator, float], velocity=60):
+    async def _move_via_actuator_vals(self, act_val_pairs: ActuatorVals, velocity=60):
         """move misty's arms/head based on actuator->value dict"""
         coros = []
 
@@ -173,37 +229,34 @@ class MovementAPI(PartialAPI):
         payload = json_obj(Heading=heading_degrees * -1, Radius=radius_m, TimeMs=time_ms, Reverse=reverse)
         return await self._post('drive/arc', payload)
 
-    async def get_actuator_values(self, *actuators: Actuator, normalize=True) -> Dict[Actuator, float]:
+    async def get_actuator_values(self, *actuators: Actuator, normalize=True, force=False) -> ActuatorVals:
         """
         get actuator values from misty and, if set, normalize to values between
         -100 and 100 based on calibrations
-        """
-        if not actuators:
-            actuators = tuple(Actuator)
 
-        res: Dict[Sub, float] = {}
-        submitted = asyncio.Event()
+        `force` will make sure we go to misty to get the values
+        """
+        orig_actuators = actuators
+        actuators = tuple(Actuator)
+
+        if not force and not _actuator_cache.update_needed:
+            return _actuator_cache.by_actuators(*orig_actuators)
 
         async def _wait_one(sp: SubPayload):
             await submitted.wait()
-
-            unsub = True
-            try:
-                expected_sub_ids.remove(sp.sub_id)
-            except KeyError:
-                unsub = False
-
             with suppress(Exception):
                 res[sp.sub_id.sub] = sp.data.message.value
-
-            if unsub:
+            with suppress(KeyError):
+                expected_sub_ids.remove(sp.sub_id)
                 asyncio.create_task(sp.sub_id.unsubscribe())
 
             return not expected_sub_ids
 
+        res: ActuatorVals = {}
+        submitted = asyncio.Event()
         ecb = EventCallback(_wait_one)
 
-        subscriptions = (self.api.ws.subscribe(a, ecb, 100) for a in actuators)
+        subscriptions = (self.api.ws.subscribe(a, ecb, 100) for a in (actuators if normalize else orig_actuators))
         expected_sub_ids = set(await asyncio.gather(*subscriptions))
         submitted.set()
         await ecb
@@ -211,8 +264,11 @@ class MovementAPI(PartialAPI):
         res = {Actuator(first(sub.ec).value): v for sub, v in res.items()}
         if not normalize:
             return res
+
         calibrations = _get_calibrated_actuator_positions()
-        return {k: calibrations[k].normalize(v) for k, v in res.items()}
+        res = {k: calibrations[k].normalize(v) for k, v in res.items()}
+        _actuator_cache.set(res)
+        return {k: res[k] for k in orig_actuators}
 
     @asynccontextmanager
     async def reset_to_orig(self, velocity=60):
@@ -340,8 +396,10 @@ def _validate_vel_pct(**vel_pcts):
 
 
 def __main():
+    pass
+    # print(asyncio.get_running_loop())
     # print(asyncio.run(calibrate_misty()))
-    print(ArmSettings('left', -50, 50).json)
+    # print(ArmSettings('left', -50, 50).json)
 
 
 if __name__ == '__main__':
