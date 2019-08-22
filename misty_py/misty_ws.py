@@ -146,8 +146,8 @@ class MistyWS(metaclass=InstanceCache):
         self._tasks[sub_id] = TaskInfo(asyncio.create_task(self._handle(ws, handler, sub_id)), ws)
 
         payload = sub_id.to_json(debounce_ms)
-        print('subscribing:', payload)
-        await ws.send(payload.json_str)
+        print(arrow.utcnow(), 'subscribing:', payload)
+        asyncio.create_task(ws.send(payload.json_str))
 
         return sub_id
 

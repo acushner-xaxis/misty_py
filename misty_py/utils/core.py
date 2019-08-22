@@ -33,7 +33,7 @@ class classproperty:
 def asyncpartial(coro, *args, **kwargs):
     @wraps(coro)
     async def wrapped(*a, **kw):
-        return await coro(*(args + a), **{**kwargs, **kw})
+        return await coro(*args, *a, **kwargs, **kw)
 
     return wrapped
 
@@ -300,7 +300,7 @@ def format_help(help):
             res[cmd.apiCommand.apiCommandGroup].append((method, cmd))
 
     def pp(l):
-        for method, d in sorted(l):
+        for method, d in l:
             print(f'{d.baseApiCommand}: {method} {d.endpoint}')
 
     for k, v in res.items():

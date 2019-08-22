@@ -144,6 +144,10 @@ class Actuator(LLSubType):
     def _sub_type(cls) -> SubType:
         return SubType.actuator_position
 
+    @property
+    def is_head(self):
+        return self in {Actuator.pitch, Actuator.roll, Actuator.yaw}
+
 
 class TimeOfFlight(LLSubType):
     right = 'TOF_Right'

@@ -5,6 +5,7 @@ import inspect
 import os
 import textwrap
 from concurrent.futures.thread import ThreadPoolExecutor
+from contextlib import suppress
 from functools import partial
 from typing import Dict, Optional
 
@@ -14,6 +15,11 @@ from misty_py.apis import *
 from misty_py.misty_ws import MistyWS
 from misty_py.subscriptions import SubPayload, Sub
 from misty_py.utils import *
+
+with suppress(ModuleNotFoundError):
+    import uvloop
+
+    uvloop.install()
 
 
 class MistyAPI(RestAPI):
