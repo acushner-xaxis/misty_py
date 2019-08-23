@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from abc import abstractmethod, ABC
 from asyncio import Future
 from contextlib import suppress
@@ -14,8 +15,22 @@ from io import BytesIO
 __all__ = (
     'Coords', 'InstanceCache', 'json_obj', 'RestAPI', 'JSONObjOrObjs', 'decode_img',
     'save_data_locally', 'generate_upload_payload', 'delay', 'asyncpartial', 'classproperty', 'wait_first',
-    'async_run', 'format_help', 'wait_in_order', 'wait_for_group', 'first'
+    'async_run', 'format_help', 'wait_in_order', 'wait_for_group', 'first', 'init_log'
 )
+
+
+def init_log(name, level=logging.INFO):
+    """create logger using consistent settings"""
+    log = logging.getLogger(name)
+    log.setLevel(level)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler = logging.StreamHandler()
+    handler.setFormatter(formatter)
+    log.addHandler(handler)
+    return log
+
+
+log = init_log(__name__)
 
 
 def first(v):
@@ -90,7 +105,7 @@ class json_obj(dict):
         return cls(json.loads(s))
 
     @property
-    def json_str(self) -> str:
+    def json(self) -> str:
         return json.dumps(self)
 
     @property
@@ -266,7 +281,8 @@ class DonePending(NamedTuple):
     pending: Set[asyncio.Future]
 
 
-async def wait_first(*coros: Optional[Coroutine], cancel=True, return_when=asyncio.FIRST_COMPLETED) -> DonePending:
+async def wait_first(*coros: Optional[Union[Future, Coroutine]],
+                     cancel=True, return_when=asyncio.FIRST_COMPLETED) -> DonePending:
     """
     wait for the first task to complete (default) or raise an exception.
 

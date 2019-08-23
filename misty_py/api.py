@@ -16,6 +16,8 @@ from misty_py.misty_ws import MistyWS
 from misty_py.subscriptions import SubPayload, Sub
 from misty_py.utils import *
 
+log = init_log(__name__)
+
 with suppress(ModuleNotFoundError):
     import uvloop
 
@@ -104,7 +106,7 @@ class MistyAPI(RestAPI):
     async def _request(self, method, endpoint, json=None, *, _headers: Optional[Dict[str, str]] = None, **params):
         req_kwargs = json_obj.from_not_none(json=json, headers=_headers)
         f = partial(requests.request, method, self._endpoint(endpoint, **params), **req_kwargs)
-        print(method, self._endpoint(endpoint, **params), _headers)
+        log.info(f'{method}: {self._endpoint(endpoint, **params)}')
         return await asyncio.get_running_loop().run_in_executor(self._pool, f)
 
     async def _get(self, endpoint, *, _headers=None, **params):

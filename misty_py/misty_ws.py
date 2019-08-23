@@ -11,9 +11,11 @@ import websockets
 
 from misty_py.subscriptions import SubType, SubId, SubPayload, HandlerType, Sub, LLSubType
 from .utils import json_obj
-from .utils.core import InstanceCache
+from .utils.core import InstanceCache, init_log
 
 __author__ = 'acushner'
+
+log = init_log(__name__)
 
 
 class TaskInfo(NamedTuple):
@@ -80,7 +82,7 @@ class UnchangedValue:
             if self._init_val is None:
                 self._init_val = p
             if self.debug:
-                print(f'prev: {prev.data.message.pretty}, cur: {sp.data.message.pretty}')
+                log.info(f'prev: {prev.data.message.pretty}, cur: {sp.data.message.pretty}')
             return abs(p - c) < self._tolerance and p != self._init_val
 
     def clear(self):
@@ -98,7 +100,7 @@ class EventCBUnchanged(EventCallback):
 
 
 async def debug_handler(sp: SubPayload):
-    print(sp)
+    log.info(sp)
 
 
 class SubscriptionError(Exception):
@@ -122,7 +124,7 @@ class MistyWS(metaclass=InstanceCache):
     async def _send(self, payload: json_obj):
         """simple function to send a bespoke payload via a websocket. useful for debugging"""
         ws = await websockets.connect(self._endpoint)
-        return await ws.send(payload.json_str)
+        return await ws.send(payload.json)
 
     def _next_sub_id(self) -> int:
         return next(self._count)
@@ -146,8 +148,8 @@ class MistyWS(metaclass=InstanceCache):
         self._tasks[sub_id] = TaskInfo(asyncio.create_task(self._handle(ws, handler, sub_id)), ws)
 
         payload = sub_id.to_json(debounce_ms)
-        print(arrow.utcnow(), 'subscribing:', payload)
-        asyncio.create_task(ws.send(payload.json_str))
+        log.info(f'subscribing: {payload}')
+        asyncio.create_task(ws.send(payload.json))
 
         return sub_id
 
@@ -167,7 +169,7 @@ class MistyWS(metaclass=InstanceCache):
 
         can unsubscribe either by `SubType`, `SubId`, or str containing the event_name
         """
-        print(arrow.utcnow(), 'unsubscribing:', sub_id)
+        log.info(f'unsubscribing: {sub_id}')
         if isinstance(sub_id, str):
             return await self._unsubscribe_str(sub_id)
 
@@ -183,9 +185,9 @@ class MistyWS(metaclass=InstanceCache):
         ti.task.cancel()
 
         payload = json_obj(Operation='unsubscribe', EventName=sub_id.event_name, Message=str(sub_id))
-        await ti.ws.send(payload.json_str)
+        await ti.ws.send(payload.json)
         await ti.ws.close()
-        print(arrow.utcnow(), 'unsubscribed')
+        log.info('unsubscribed')
         return True
 
     async def unsubscribe_all(self):
@@ -222,7 +224,9 @@ class MistyWS(metaclass=InstanceCache):
                 if o.message.startswith('Registration Status: API event registered'):
                     continue
 
-                print('Failed to register:', o)
+                log.error('Failed to register:', o)
+                t = create_task(handler(o))
+                t.cancel()
                 await sub_id.unsubscribe()
                 raise SubscriptionError(f'failed to subscribe: {msg}')
 

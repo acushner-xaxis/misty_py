@@ -41,12 +41,6 @@
 - MINOR BUG: can upload gifs, but they don't animate
     
 ##### TODO:
-- [x] CAN'T SOLVE: figure out what causes audio recording to fail
-- [x] super blinky eyes
-- [x] read current arm/head/etc positions
-    - [x] normalize existing states
-    - [ ] increment them easily
-    - [ ] return to original state
 - [ ] implement common colors
 - [ ] ON HOLD: change upload to include optional path (bug)
     - [ ] audio
@@ -64,6 +58,12 @@
 - [x] implement keyword recognition
 - [x] audio complete to use metadata
 - [x] WON'T DO: change to use aiohttp instead of `requests` library
+- [x] CAN'T SOLVE: figure out what causes audio recording to fail
+- [x] super blinky eyes
+- [x] read current arm/head/etc positions
+    - [x] normalize existing states
+    - [x] increment them easily
+    - [x] return to original state
 
 ##### random
 - [ ] read subjects of incoming emails

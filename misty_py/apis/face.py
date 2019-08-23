@@ -4,8 +4,10 @@ from typing import Set, Optional
 from misty_py.apis.base import PartialAPI, print_pretty
 from misty_py.misty_ws import EventCallback
 from misty_py.subscriptions import SubPayload, FTMsgs, SubType
+from misty_py.utils import init_log
 
 __author__ = 'acushner'
+log = init_log(__name__)
 
 
 class FaceAPI(PartialAPI):
@@ -49,7 +51,7 @@ class FaceAPI(PartialAPI):
 
         async def _wait(sp: SubPayload):
             m = sp.data.message.message
-            print(m)
+            log.info(m)
             return m == FTMsgs.complete.value
 
         ecb = EventCallback(_wait)

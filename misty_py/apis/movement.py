@@ -236,7 +236,7 @@ class MovementAPI(PartialAPI):
 
         `force` will make sure we go to misty to get the values
         """
-        orig_actuators = actuators
+        orig_actuators = actuators or tuple(Actuator)
         actuators = tuple(Actuator)
 
         if not force and not _actuator_cache.update_needed:

@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='misty_py',
-    version='0.9.17',
+    version='0.9.18',
     packages=['misty_py', 'misty_py.utils', 'misty_py.apis'],
     package_dir={'misty_py': 'misty_py',
                  'misty_py.utils': 'misty_py/utils',
