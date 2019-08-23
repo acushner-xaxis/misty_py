@@ -162,7 +162,7 @@ class ImageAPI(PartialAPI):
             await self.set_blink_settings(settings)
             yield
         finally:
-            await self.set_blink_settings(orig)
+            await asyncio.shield(self.set_blink_settings(orig))
 
 
 default_eye_params = {

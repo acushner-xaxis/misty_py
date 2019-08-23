@@ -277,7 +277,7 @@ class MovementAPI(PartialAPI):
         try:
             yield
         finally:
-            await self._move_via_actuator_vals(positions, velocity=velocity)
+            await asyncio.shield(self._move_via_actuator_vals(positions, velocity=velocity))
 
 
 # ======================================================================================================================

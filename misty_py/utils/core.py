@@ -233,7 +233,8 @@ def save_data_locally(path, data: BytesIO, suffix: str):
         f.write(data.read())
 
 
-def generate_upload_payload(prefix, file_name, apply_immediately, overwrite_existing, limit=None):
+def generate_upload_payload(prefix, file_name, apply_immediately, overwrite_existing, *, limit=None,
+                            data: Optional[bytes] = None):
     """
     upload for audio/images are very similar. this function encapsulates that
 
@@ -242,7 +243,7 @@ def generate_upload_payload(prefix, file_name, apply_immediately, overwrite_exis
     # TODO: add back in when misty supports path prefixes
     # return json_obj(FileName=str(Path(prefix) / Path(file_name).name), Data=encode_data(file_name, limit),
     #                 ImmediatelyApply=apply_immediately, OverwriteExisting=overwrite_existing)
-    return json_obj(FileName=Path(file_name).name, Data=encode_data(file_name, limit),
+    return json_obj(FileName=Path(file_name).name, Data=encode_data(data or file_name, limit),
                     ImmediatelyApply=apply_immediately, OverwriteExisting=overwrite_existing)
 
 

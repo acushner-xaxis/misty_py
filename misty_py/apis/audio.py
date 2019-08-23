@@ -32,7 +32,7 @@ class AudioAPI(PartialAPI):
         return res
 
     async def upload(self, file_path: str, *, prefix: str = '', apply_immediately: bool = False,
-                     overwrite_existing: bool = True):
+                     overwrite_existing: bool = True, data: Optional[bytes] = None):
         """
         NOTE: prefix is busted for now and will not be used. waiting on fix from misty robotics
 
@@ -44,7 +44,8 @@ class AudioAPI(PartialAPI):
         file_path is the local path to the file
         prefix, if provided, will be prepended to the name as placed on misty
         """
-        payload = generate_upload_payload(prefix, file_path, False, overwrite_existing, limit=AUDIO_SIZE_LIMIT)
+        payload = generate_upload_payload(prefix, file_path, False, overwrite_existing, limit=AUDIO_SIZE_LIMIT,
+                                          data=data)
         res = await self._post('audio', payload)
         if apply_immediately:
             await self.play(payload.FileName)

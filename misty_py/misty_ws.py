@@ -209,7 +209,7 @@ class MistyWS(metaclass=InstanceCache):
             if not isinstance(sub_id_or_ids, list):
                 sub_id_or_ids = [sub_id_or_ids]
             for sid in sub_id_or_ids:
-                create_task(self.unsubscribe(sid))
+                create_task(asyncio.shield(self.unsubscribe(sid)))
 
     async def _handle(self, ws, handler: HandlerType, sub_id):
         """
