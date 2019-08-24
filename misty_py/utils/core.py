@@ -15,8 +15,18 @@ from io import BytesIO
 __all__ = (
     'Coords', 'InstanceCache', 'json_obj', 'RestAPI', 'JSONObjOrObjs', 'decode_img',
     'save_data_locally', 'generate_upload_payload', 'delay', 'asyncpartial', 'classproperty', 'wait_first',
-    'async_run', 'format_help', 'wait_in_order', 'wait_for_group', 'first', 'init_log'
+    'async_run', 'format_help', 'wait_in_order', 'wait_for_group', 'first', 'init_log', 'shield_async'
 )
+
+
+async def shield_async(coro):
+    """for some reason, `await create_task(shield(coro))` just doesn't work. so we have this now."""
+
+    @wraps(coro)
+    async def _wrap():
+        return await asyncio.shield(coro)
+
+    return asyncio.create_task(_wrap())
 
 
 def init_log(name, level=logging.INFO):

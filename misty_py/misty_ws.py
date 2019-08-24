@@ -11,7 +11,7 @@ import websockets
 
 from misty_py.subscriptions import SubType, SubId, SubPayload, HandlerType, Sub, LLSubType
 from .utils import json_obj
-from .utils.core import InstanceCache, init_log
+from .utils.core import InstanceCache, init_log, shield_async
 
 __author__ = 'acushner'
 
@@ -208,8 +208,8 @@ class MistyWS(metaclass=InstanceCache):
         finally:
             if not isinstance(sub_id_or_ids, list):
                 sub_id_or_ids = [sub_id_or_ids]
-            for sid in sub_id_or_ids:
-                create_task(asyncio.shield(self.unsubscribe(sid)))
+            coros = (shield_async(self.unsubscribe(sid)) for sid in sub_id_or_ids)
+            await asyncio.gather(*coros)
 
     async def _handle(self, ws, handler: HandlerType, sub_id):
         """
