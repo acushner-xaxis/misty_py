@@ -102,6 +102,10 @@ class LLSubType(Enum):
     def sub(self) -> Sub:
         return Sub.create(self._sub_type, self._event_condition)
 
+    @classproperty
+    def lower_level_subs(cls):
+        yield from (s.sub for s in cls)
+
     @classmethod
     @lru_cache(maxsize=128)
     def _sub_ll_sub_map(cls, sub_type: SubType):

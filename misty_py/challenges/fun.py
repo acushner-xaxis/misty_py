@@ -42,8 +42,8 @@ async def dump_debug_info():
 
 
 async def play():
-    print(await api.movement.get_actuator_values())
-    return
+    # print(await api.movement.get_actuator_values())
+    # return
     async def _handler(sp: SubPayload):
         t = LLSubType.from_sub_payload(sp)
         print(type(t), t)
