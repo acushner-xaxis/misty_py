@@ -79,18 +79,21 @@ class AudioAPI(PartialAPI):
         - do nothing
         """
 
-        force_stop = completed = None
-        if on_done or blocking:
-            completed = wait_in_order(self._handle_audio_complete(name))
+        try:
+            force_stop = completed = None
+            if on_done or blocking:
+                completed = wait_in_order(self._handle_audio_complete(name))
 
-        if how_long_secs:
-            force_stop = delay(how_long_secs, self.stop_playing())
+            if how_long_secs:
+                force_stop = delay(how_long_secs, self.stop_playing())
 
-        if blocking or on_done or how_long_secs:
-            t = asyncio.create_task(wait_in_order(wait_first(force_stop, completed), on_done))
-            if blocking:
-                return await t
-            return t
+            if blocking or on_done or how_long_secs:
+                t = asyncio.create_task(wait_in_order(wait_first(force_stop, completed), on_done))
+                if blocking:
+                    return await t
+                return t
+        except asyncio.CancelledError:
+            await self.stop_playing()
 
     async def _handle_audio_complete(self, name):
         """subscribe and wait for an audio complete event"""

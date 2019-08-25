@@ -6,7 +6,7 @@ import arrow
 
 from misty_py.apis.base import PartialAPI
 from misty_py.misty_ws import EventCallback
-from misty_py.subscriptions import Actuator, Sub, SubPayload
+from misty_py.subscriptions import Actuator, SubPayload
 from misty_py.utils import json_obj, first
 
 __author__ = 'acushner'
@@ -95,6 +95,7 @@ class _ActuatorCache(dict):
 
     getting misty's actuator values can take anywhere from 100 to 2000ms, usually around 300ms
     """
+
     def __init__(self, min_update_secs):
         super().__init__()
         self._last_update = arrow.utcnow().shift(days=-1)
