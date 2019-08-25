@@ -6,7 +6,6 @@ from contextlib import asynccontextmanager, suppress
 from itertools import count
 from typing import Dict, NamedTuple, Union, Optional, List
 
-import arrow
 import websockets
 
 from misty_py.subscriptions import SubType, SubId, SubPayload, HandlerType, Sub, LLSubType
@@ -136,6 +135,10 @@ class MistyWS(metaclass=InstanceCache):
 
         handler will be invoked every time an event is received
         """
+        with suppress(TypeError):
+            if issubclass(sub, LLSubType):
+                raise ValueError(f'cannot subscribe via LLSubType {sub}, use SubType instead')
+
         if isinstance(sub, SubType):
             coros = (self.subscribe(s, handler, debounce_ms) for s in sub.lower_level_subs)
             return await asyncio.gather(*coros)
@@ -224,7 +227,7 @@ class MistyWS(metaclass=InstanceCache):
                 if o.message.startswith('Registration Status: API event registered'):
                     continue
 
-                log.error('Failed to register:', o)
+                log.error(f'Failed to register: {o}')
                 t = create_task(handler(o))
                 t.cancel()
                 await sub_id.unsubscribe()

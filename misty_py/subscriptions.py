@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from enum import Enum
+from functools import lru_cache
 from itertools import count
-from typing import NamedTuple, Optional, Callable, Awaitable, FrozenSet, Dict, Any
+from typing import NamedTuple, Optional, Callable, Awaitable, FrozenSet, Dict, Any, Union
 
 import arrow
 
@@ -67,7 +68,7 @@ class EventCondition(NamedTuple):
         return f'{self.name}{self.inequality}{self.value}'
 
 
-_high_to_low_level_sub_map: Dict[SubType, 'LLSubType'] = {}
+_high_to_low_level_sub_map: Dict[SubType, LLSubType] = {}
 
 
 class LLSubType(Enum):
@@ -82,6 +83,12 @@ class LLSubType(Enum):
     def __init_subclass__(cls, **kwargs):
         _high_to_low_level_sub_map[cls._sub_type] = cls
 
+    @classmethod
+    def from_sub_payload(cls, sp: SubPayload) -> Union[Sub, LLSubType]:
+        """find LLSubType from SubPayload, if any. otherwise, return the Sub itself"""
+        sub = sp.sub_id.sub
+        return cls._sub_ll_sub_map(sub.sub_type).get(sub, sub)
+
     @abstractmethod
     @classproperty
     def _sub_type(cls) -> SubType:
@@ -95,9 +102,16 @@ class LLSubType(Enum):
     def sub(self) -> Sub:
         return Sub.create(self._sub_type, self._event_condition)
 
+    @classmethod
+    @lru_cache(maxsize=128)
+    def _sub_ll_sub_map(cls, sub_type: SubType):
+        ll_sub_type = _high_to_low_level_sub_map.get(sub_type)
+        if not ll_sub_type:
+            return {}
+        return dict(zip(ll_sub_type.lower_level_subs, ll_sub_type))
+
 
 class Touch(LLSubType):
-    # TODO: get abbreviated values for `Touch` from misty?
     """in the `sensorPosition` var"""
 
     chin = 'Chin'
