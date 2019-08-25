@@ -94,6 +94,7 @@ class AudioAPI(PartialAPI):
                 return t
         except asyncio.CancelledError:
             await self.stop_playing()
+            raise
 
     async def _handle_audio_complete(self, name):
         """subscribe and wait for an audio complete event"""
@@ -107,6 +108,7 @@ class AudioAPI(PartialAPI):
                 await event
         except asyncio.CancelledError:
             event.set()
+            raise
 
     async def stop_playing(self):
         """trigger a small amount of silence to stop a playing song"""
