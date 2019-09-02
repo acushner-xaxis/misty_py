@@ -1,11 +1,8 @@
-# asyncio misty robot REST API
+#  async/await REST API implementation for misty II robots
 
-### WIP
+### about
 
-- almost fully featured
-- testing in progress with a field trial version
-- will always remain public
-- expect things to break for a bit
+- python 3.7+ implementation of the misty II REST API
 
 ### installation
 - use python 3.7
@@ -52,10 +49,11 @@ a simple face training example:
 ```python
 import asyncio
 from misty_py.api import MistyAPI
+from misty_py.utils.color import RGB
 
 api = MistyAPI()
 await asyncio.gather(
-    api.images.set_led(RGB(0, 255, 0))
+    api.images.set_led(RGB(0, 255, 0)),
     api.faces.wait_for_training('name')
 )
 await api.images.set_led()
@@ -77,6 +75,12 @@ each time you subscribe you get a `SubId` object which can be used to interact w
 here are some examples:
 
 ```python
+from misty_py.subscriptions import SubPayload, SubType, Bump
+from misty_py.api import MistyAPI
+
+api = MistyAPI()
+
+
 async def debug_handler(sp: SubPayload):
     print(sp)
 
@@ -109,11 +113,12 @@ there are 3 ways to unsubscribe:
 await api.ws.unsubscribe(SubType.self_state)
 ```
 
-##### `EventCallback`
+##### EventCallback
 
-object that combines a callback with an event.
-
-when the callback returns a truthy value, the event will be set. useful for figuring out when something's done
+- object that combines a callback with an event.
+- when the callback returns a truthy value, the event will be set.
+- useful for figuring out when something's done
+- works great as a handler for subscribing to messages
 
 ```python
 # example of waiting for an audio file with a certain name to complete playing

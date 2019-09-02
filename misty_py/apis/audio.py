@@ -1,12 +1,12 @@
 import asyncio
 from functools import wraps
 from io import BytesIO
-from typing import Dict, Optional, Coroutine
+from typing import Dict, Optional
 
 from misty_py.apis.base import PartialAPI, write_outfile, print_pretty, AUDIO_SIZE_LIMIT
 from misty_py.misty_ws import EventCallback
 from misty_py.subscriptions import SubPayload, SubType, HandlerType
-from misty_py.utils import json_obj, generate_upload_payload, wait_in_order, delay, wait_first
+from misty_py.utils import json_obj, generate_upload_payload, delay, wait_first
 
 __author__ = 'acushner'
 
@@ -14,7 +14,12 @@ __author__ = 'acushner'
 class AudioAPI(PartialAPI):
     """record, play, change volume, manage audio files"""
 
+    def __init__(self, api):
+        super().__init__(api)
+        self.saved_audio = json_obj()
+
     async def get(self, file_name: str, outfile='', *, as_base64=False) -> BytesIO:
+        """download an audio file from misty"""
         res = await self._get('audio', FileName=file_name, Base64=as_base64)
         write_outfile(outfile, res.content, as_base64)
         return BytesIO(res.content)
@@ -51,49 +56,40 @@ class AudioAPI(PartialAPI):
             await self.play(payload.FileName)
         return res
 
-    async def play(self, name: str, volume: int = 100, *, how_long_secs: Optional[int] = None, blocking=False,
-                   on_done: Optional[Coroutine] = None):
+    async def play(self, name: str, volume: int = 100, *, how_long_secs: Optional[int] = None, blocking=False):
         """
         play audio for how long you want to
 
         use `how_long_secs` to interrupt audio after a certain amount of time has elapsed
         use `blocking` to indicate that this call should not complete until audio is done playing
-        use `on_done` as a callback to indicate what should be done when audio is complete
         """
         payload = dict(FileName=name, Volume=min(max(volume, 1), 100))
         res = await self._post('audio/play', payload)
         if res.ok:
-            await self._handle_blocking_play_call(name, how_long_secs, blocking, on_done)
+            await self._handle_blocking_play_call(name, how_long_secs, blocking)
         return res
 
-    async def _handle_blocking_play_call(self, name: str, how_long_secs: float, blocking: bool,
-                                         on_done: Optional[Coroutine]):
+    async def _handle_blocking_play_call(self, name: str, how_long_secs: float, blocking: bool):
         """
         handle waiting for audio to finish. we need to either:
-
         - block until the song completes
         - block until either the song completes or the elapsed time has expired
-        - optionally await a callback (`on_done`)
-
         or:
         - do nothing
         """
 
         try:
-            force_stop = completed = None
-            if on_done or blocking:
-                completed = wait_in_order(self._handle_audio_complete(name))
-
+            tasks = []
+            if blocking:
+                tasks.append(self._handle_audio_complete(name))
             if how_long_secs:
-                force_stop = delay(how_long_secs, self.stop_playing())
+                tasks.append(delay(how_long_secs, self.stop_playing()))
 
-            if blocking or on_done or how_long_secs:
-                t = asyncio.create_task(wait_in_order(wait_first(force_stop, completed), on_done))
-                if blocking:
-                    return await t
-                return t
+            if tasks:
+                t = asyncio.create_task(wait_first(*tasks))
+                return await t if blocking else t
         except asyncio.CancelledError:
-            await self.stop_playing()
+            await asyncio.shield(self.stop_playing())
             raise
 
     async def _handle_audio_complete(self, name):
@@ -111,13 +107,15 @@ class AudioAPI(PartialAPI):
             raise
 
     async def stop_playing(self):
-        """trigger a small amount of silence to stop a playing song"""
+        """trigger a small amount of silence to stop a playing audio file"""
         return await self.play('silence_stop.mp3')
 
     async def delete(self, file_name: str):
+        """rm a filename from misty"""
         return await self._delete('audio', dict(FileName=file_name))
 
     async def set_default_volume(self, volume):
+        """set system-wide default volume"""
         return await self._post('audio/volume', dict(Volume=min(max(volume, 0), 100)))
 
     async def _handle_blocking_record_call(self, how_long_secs, blocking):

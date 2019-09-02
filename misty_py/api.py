@@ -23,6 +23,8 @@ with suppress(ModuleNotFoundError):
 
     uvloop.install()
 
+__all__ = ('MistyAPI',)
+
 
 class MistyAPI(RestAPI):
     """
@@ -135,8 +137,8 @@ def _run_example():
     in addition, async funcs can be awaited directly from the jupyter console
     """
 
-    async def run(ip):
-        api = MistyAPI(ip)
+    async def run():
+        api = MistyAPI()
 
         # run a single task and wait for it to be triggered
         post_res = await api.movement.drive(0, -20, 10000)
@@ -149,7 +151,7 @@ def _run_example():
         results_in_order = await asyncio.gather(*coros)
         return results_in_order
 
-    asyncio.run(run('https://fake'))
+    asyncio.run(run())
 
 
 def _create_api_doc():

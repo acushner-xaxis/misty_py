@@ -31,6 +31,7 @@ class SubType(Enum):
     face_recognition = 'FaceRecognition'
     face_training = 'FaceTraining'
     halt_command = 'HaltCommand'
+    hazard_notification = 'HazardNotification'
     imu = 'IMU'
     key_phrase_recognized = 'KeyPhraseRecognized'
     locomotion_command = 'LocomotionCommand'

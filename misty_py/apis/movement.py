@@ -397,9 +397,8 @@ def _validate_vel_pct(**vel_pcts):
 
 
 def __main():
-    pass
     # print(asyncio.get_running_loop())
-    # print(asyncio.run(calibrate_misty()))
+    print(asyncio.run(calibrate_misty()))
     # print(ArmSettings('left', -50, 50).json)
 
 

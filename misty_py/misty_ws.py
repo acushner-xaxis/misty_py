@@ -25,7 +25,8 @@ class TaskInfo(NamedTuple):
 
 class EventCallback:
     """
-    a callback combined with an event
+    combines a subscription handler with an event
+    useful in `subscribe` functions
 
     if the `handler` returns a truthy value,
     this class will `set` the event indicating to any waiters that they can proceed
@@ -89,6 +90,10 @@ class UnchangedValue:
 
 
 class EventCBUnchanged(EventCallback):
+    """
+    wraps UnchangedValue in an event
+    to be used in `subscribe` functions
+    """
     def __init__(self, tolerance: float = 0.0, *, debug=False, timeout_secs: Optional[float] = None):
         self._uv = UnchangedValue(tolerance, debug=debug)
         super().__init__(self._uv, timeout_secs)

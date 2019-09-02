@@ -1,8 +1,4 @@
-from __future__ import annotations
-
 from typing import NamedTuple
-
-import sty as sty
 
 
 class RGB(NamedTuple):
@@ -15,7 +11,7 @@ class RGB(NamedTuple):
         return hex((self.r << 16) + (self.g << 8) + self.b)
 
     @classmethod
-    def from_hex(cls, h) -> RGB:
+    def from_hex(cls, h) -> 'RGB':
         nums = []
         for _ in range(3):
             nums.append(h & 0xff)
@@ -25,14 +21,6 @@ class RGB(NamedTuple):
     @property
     def json(self):
         return dict(red=self.r, green=self.g, blue=self.b)
-
-    def color_str(self, s, set_bg=False) -> str:
-        """
-        create str with different foreground(default)/background color for use in terminal
-        reset to default at end of str
-        """
-        layer = sty.bg if set_bg else sty.fg
-        return f'{layer(*self[:3])}{s}{layer.rs}'
 
     @staticmethod
     def _add_components(v1, v2):
@@ -45,5 +33,3 @@ class RGB(NamedTuple):
     def validate(self):
         if any(c < 0 or c > 255 for c in self):
             raise ValueError(f'color values must be in [0, 255]: {self}')
-
-

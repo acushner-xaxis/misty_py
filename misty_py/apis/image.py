@@ -5,6 +5,7 @@ from typing import Dict, Optional, NamedTuple, Union
 
 from misty_py.apis.base import PartialAPI, print_pretty, write_outfile
 from misty_py.utils import save_data_locally, json_obj, generate_upload_payload, RGB, delay
+from misty_py.utils.core import decode_data
 
 __author__ = 'acushner'
 
@@ -33,6 +34,10 @@ class BlinkSettings(NamedTuple):
 
 class ImageAPI(PartialAPI):
     """handle pics, video, uploading/downloading images, changing led color, etc"""
+
+    def __init__(self, api):
+        super().__init__(api)
+        self.saved_images = json_obj()
 
     @staticmethod
     def save_image_locally(path, data: BytesIO):
@@ -77,13 +82,12 @@ class ImageAPI(PartialAPI):
         payload.add_if_not_none(Width=width, Height=height)
         return await self._post('images', payload)
 
-    async def display(self, file_name: str, time_out_secs: Optional[float] = None, alpha: float = 1.0):
+    async def display(self, file_name: str, alpha: float = 1.0):
         """
         file_name: name on device
-        time_out_secs: no idea what this does. seems to have no effect
         alpha: should be between 0 (totally transparent) and 1 (totally opaque), inclusive
         """
-        return await self._post('images/display', dict(FileName=file_name, TimeOutSeconds=time_out_secs, Alpha=alpha))
+        return await self._post('images/display', dict(FileName=file_name, Alpha=alpha))
 
     async def set_led(self, rgb: RGB = RGB(0, 0, 0)):
         """
@@ -108,7 +112,7 @@ class ImageAPI(PartialAPI):
     async def take_picture(self, file_name: Optional[str] = None, width: Optional[int] = None,
                            height: Optional[int] = None,
                            *, show_on_screen: Optional[bool] = False,
-                           overwrite_existing=True):
+                           overwrite_existing=True) -> BytesIO:
         """
         if height is supplied, so must be width, and vice versa
         if you want to display on the screen, you must provide a filename
@@ -119,7 +123,8 @@ class ImageAPI(PartialAPI):
 
         payload = json_obj.from_not_none(Base64=True, FileName=file_name, Width=width, Height=height,
                                          DisplayOnScreen=show_on_screen, OverwriteExisting=overwrite_existing)
-        return await self._get_j('cameras/rgb', **payload)
+        res = await self._get_j('cameras/rgb', **payload)
+        return decode_data(res.base64)
 
     async def start_recording_video(self, how_long_secs: Optional[int] = None):
         """

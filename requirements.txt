@@ -2,4 +2,3 @@ arrow
 requests
 websockets
 Pillow
-sty

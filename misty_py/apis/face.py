@@ -13,6 +13,10 @@ log = init_log(__name__)
 class FaceAPI(PartialAPI):
     """perform face detection, training, recognition; delete faces"""
 
+    def __init__(self, api):
+        super().__init__(api)
+        self.saved_faces = set()
+
     async def list(self, pretty=False) -> Set[str]:
         res = self.saved_faces = set(await self._get_j('faces'))
         if pretty:
