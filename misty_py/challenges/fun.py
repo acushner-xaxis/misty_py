@@ -21,26 +21,6 @@ def search():
     """have misty look around and scan her environment"""
 
 
-async def dump_debug_info():
-    cur_date = arrow.now().format('YYYYMMDD')
-    path = f'/tmp/{cur_date}.cushner.'
-    t = await api.system.device_info
-    di = path + 'device_info'
-    with open(di, 'w') as f:
-        f.write(t.pretty)
-
-    t = await api.system.get_logs(arrow.utcnow().shift(hours=-7))
-    l = path + 'log'
-    with open(l, 'w') as f:
-        f.write(t)
-
-    z = path + 'misty.zip'
-    with suppress(FileNotFoundError):
-        os.remove(z)
-    os.system(f'zip {z} {di} {l}')
-    print('created', z)
-
-
 async def play():
     # print(await api.movement.get_actuator_values())
     # return

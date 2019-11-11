@@ -9,6 +9,7 @@ from contextlib import suppress
 from functools import partial
 from typing import Dict, Optional
 
+import arrow
 import requests
 
 from misty_py.apis import *
@@ -122,6 +123,25 @@ class MistyAPI(RestAPI):
 
     async def _delete(self, endpoint, json: Optional[dict] = None, *, _headers=None, **params):
         return await self._request('DELETE', endpoint, **params, json=json, _headers=_headers)
+
+    async def dump_debug_info(self):
+        cur_date = arrow.now().format('YYYYMMDD')
+        path = f'/tmp/{cur_date}.cushner.'
+        t = await self.system.device_info
+        di = path + 'device_info'
+        with open(di, 'w') as f:
+            f.write(t.pretty)
+
+        t = await self.system.get_logs(arrow.utcnow().shift(hours=-7))
+        l = path + 'log'
+        with open(l, 'w') as f:
+            f.write(t)
+
+        z = path + 'misty.zip'
+        with suppress(FileNotFoundError):
+            os.remove(z)
+        os.system(f'zip {z} {di} {l}')
+        print('created', z)
 
     def __eq__(self, other):
         return self.ip == other.ip
