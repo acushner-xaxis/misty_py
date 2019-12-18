@@ -6,7 +6,7 @@ with open(Path(__file__).parent / 'README.md') as f:
 
 setup(
     name='misty_py',
-    version='0.9.26',
+    version='0.9.27',
     packages=['misty_py', 'misty_py.utils', 'misty_py.apis'],
     package_dir={'misty_py': 'misty_py',
                  'misty_py.utils': 'misty_py/utils',

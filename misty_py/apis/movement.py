@@ -272,8 +272,12 @@ class MovementAPI(PartialAPI):
         return {k: res[k] for k in orig_actuators}
 
     @asynccontextmanager
-    async def reset_to_orig(self, velocity=60):
+    async def reset_to_orig(self, velocity=60, ignore=False):
         """return misty to her starting actuator positions after code block is run"""
+        if ignore:
+            yield
+            return
+
         positions = await self.get_actuator_values()
         try:
             yield
@@ -361,7 +365,7 @@ async def calibrate_misty():
     res[Actuator.right_arm] = PosZeroNeg(r_pos, r_0, r_neg)
 
     print()
-    print(json_obj((k.name, v) for k, v in res.items()).pretty)
+    print({k.name: list(v) for k, v in res.items()})
     return res
 
 

@@ -120,15 +120,15 @@ class AudioAPI(PartialAPI):
 
     async def _handle_blocking_record_call(self, how_long_secs, blocking):
         if blocking and not how_long_secs:
-            raise ValueError('if you want to block, must provide both `how_long_secs`')
+            raise ValueError('if you want to block, must provide `how_long_secs`')
 
-        if how_long_secs is not None:
-            how_long_secs = min(max(how_long_secs, 0), 60)
-            coro = delay(how_long_secs, self.stop_recording())
-            if blocking:
-                await coro
-            else:
-                asyncio.create_task(coro)
+        # limited here due to misty API specs
+        how_long_secs = min(max(how_long_secs, 0), 60)
+        coro = delay(how_long_secs, self.stop_recording())
+        if blocking:
+            await coro
+        else:
+            asyncio.create_task(coro)
 
     async def record(self, filename: str, how_long_secs: Optional[float] = None, blocking=False):
         """record audio"""

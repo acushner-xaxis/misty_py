@@ -142,7 +142,7 @@ class MistyWS(metaclass=InstanceCache):
         """
         with suppress(TypeError):
             if issubclass(sub, LLSubType):
-                raise ValueError(f'cannot subscribe via LLSubType {sub}, use SubType instead')
+                raise ValueError(f'cannot subscribe via type LLSubType {sub}, use SubType instead')
 
         if isinstance(sub, SubType):
             coros = (self.subscribe(s, handler, debounce_ms) for s in sub.lower_level_subs)

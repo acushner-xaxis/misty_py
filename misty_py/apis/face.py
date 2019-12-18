@@ -41,9 +41,7 @@ class FaceAPI(PartialAPI):
         await self._post('faces/detection/stop')
 
     async def start_training(self, face_id: str):
-        """
-        start training a particular face
-        """
+        """start training a particular face"""
         return await self._post('faces/training/start', dict(FaceId=face_id))
 
     async def stop_training(self):
